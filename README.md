@@ -79,6 +79,33 @@ On the NIM side each contribution is stamped with a `kitty:<id>` memo via
 have to trust this app's database at all. On the EVM side the Worker decodes the transaction's
 `transfer(address,uint256)` calldata and checks recipient, token, sender and amount.
 
+### Link previews
+
+A Kitty link gets pasted into a group chat. If it unfurls as a bare URL nobody taps it; if it unfurls
+with a live progress bar, people do. So `og:image` points at a per-Kitty PNG — it has to be PNG,
+because WhatsApp, Telegram, X and LinkedIn all refuse SVG there.
+
+The awkward part: rendering one costs ~152 ms CPU, and the Workers free plan allows **10 ms**. Worse,
+a CPU overrun is not catchable — Cloudflare kills the isolate, so a `try/catch` fallback never runs
+and the crawler gets error 1102 and *no image*, which every platform then caches hard.
+
+The route is therefore split so it is safe on any plan:
+
+| | |
+|---|---|
+| **The crawler's request** | Never rasterises. It reads the Kitty row, checks the cache, and returns pre-built bytes. Measured CPU for the byte copy: **0.055 ms — 182× under the free budget.** |
+| **The render** | Runs in a *separate, deferred* invocation with its own budget, and only writes to a cache. If it is killed for CPU — the normal case on the free plan — nothing caches, no request was affected, and the safe card keeps being served. |
+| **With CPU headroom** | The render succeeds and later requests are upgraded to the real per-Kitty card, keyed by 5% progress bucket so it follows the pot as it fills. |
+
+The `x-kitty-og` response header says which happened: `static` (safe pre-built bytes, render queued),
+`upgraded` (the real per-Kitty card), or `fallback` (something failed, safe card served).
+
+```bash
+curl -sI https://<your-url>/og/<kitty-id>.png | grep x-kitty-og
+```
+
+Verify with `npm run test:og`.
+
 ### Architecture
 
 ```
@@ -216,6 +243,7 @@ Your Mini App URL is the Worker URL. The share deeplink is `nimiqpay://miniapp?u
 npm run typecheck   # tsc across app, worker and shared
 npm run test:live   # on-chain verification logic, against Nimiq mainnet
 npm run test:ui     # drives the real app in a real browser (needs it running)
+npm run test:og     # Open Graph image lifecycle: safety, upgrade, fallbacks
 
 ./scripts/verify-deploy.sh <url>   # proves a live deployment works end to end
 ```
@@ -241,11 +269,16 @@ Stated plainly rather than buried:
 - **The organizer is trusted.** They hold the pot and choose where it goes. This is inherent to the
   non-custodial, no-contract design and is disclosed in-app. A future EVM-only escrow mode could
   remove it, at the cost of rail parity.
-- **The OG card is Latin-only and has no emoji.** It is generated per-Kitty as a real PNG, but the
-  embedded font is a Latin-1 + Latin Extended-A subset, so a Kitty titled in, say, Japanese renders
-  as a generic label rather than tofu boxes. Emoji are omitted from the image deliberately — an
-  emoji font would cost more than the rest of the bundle — though the Kitty's emoji still appears in
-  `og:title`, which social clients render themselves.
+- **Per-Kitty preview images need CPU headroom; the free plan gets the generic card.** Rendering one
+  card costs ~152 ms CPU against the free plan's **10 ms** budget, so the render can never complete
+  there. Kitty is built so this degrades instead of breaking — see
+  [Link previews](#link-previews) — but on the free plan every Kitty shares one generic image. The
+  live numbers still reach readers through `og:description`, which every client renders. The $5/month
+  Workers plan enables per-Kitty cards with **no code change**.
+- **The OG card is Latin-only and has no emoji.** The embedded font is a Latin-1 + Latin Extended-A
+  subset, so a Kitty titled in, say, Japanese renders a generic label rather than tofu boxes. Emoji
+  are omitted deliberately — an emoji font would cost more than the rest of the bundle — though the
+  Kitty's emoji still appears in `og:title`, which social clients render themselves.
 - **Whether previews actually appear in each app is unverified.** Every major platform caches
   aggressively and each has its own crawler; confirming it needs a deployed URL and each platform's
   own debugger. See [docs/DEEPLINK-TEST.md](docs/DEEPLINK-TEST.md), Matrix E.

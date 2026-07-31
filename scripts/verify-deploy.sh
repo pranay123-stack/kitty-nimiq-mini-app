@@ -227,14 +227,30 @@ PY
   if [ "$OG_DIMS" = "1200x630" ]; then ok "OG image is a valid PNG at 1200x630"
   else bad "OG image dimensions are '$OG_DIMS', expected 1200x630" "Crawlers reject odd sizes"; fi
 
-  if [ "$OG_MODE" = "generated" ]; then
-    ok "OG image was generated live (per-Kitty card)"
-  elif [ "$OG_MODE" = "static" ]; then
-    warn "OG image fell back to the static card" \
-         "Previews still work but show the generic card. Check Worker logs for the render error."
-  else
-    warn "no x-kitty-og header (got '$OG_MODE')"
-  fi
+  case "$OG_MODE" in
+    static)
+      ok "first request served pre-built bytes (CPU-safe on every plan)"
+      # The deferred render needs CPU headroom. Give it a moment, then look.
+      sleep 4
+      OG_MODE2="$(curl -sS --max-time 20 -o /dev/null -D - "$BASE/og/$KID.png" 2>/dev/null \
+                  | grep -i '^x-kitty-og:' | tr -d '\r' | cut -d' ' -f2-)"
+      if [ "$OG_MODE2" = "upgraded" ]; then
+        ok "auto-upgraded to the per-Kitty card (this plan has CPU headroom)"
+      else
+        warn "still serving the static card after 4s — expected on the Cloudflare FREE plan" \
+             "A render needs ~152ms CPU against a 10ms free budget, so the deferred invocation is killed and nothing caches. Previews still work, showing the generic card. The paid plan (\$5/mo) enables per-Kitty cards with no code change."
+      fi
+      ;;
+    upgraded)
+      ok "served the cached per-Kitty card (this plan has CPU headroom)"
+      ;;
+    fallback)
+      warn "OG image served the fallback card" "Check Worker logs; the Kitty may not have loaded."
+      ;;
+    *)
+      warn "unexpected x-kitty-og value '$OG_MODE'"
+      ;;
+  esac
 
   # The fallback path must itself always produce a valid PNG — that is the
   # promise the whole design rests on.

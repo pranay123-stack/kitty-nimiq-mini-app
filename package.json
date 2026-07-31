@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Kitty — a shared group-money pot Mini App for Nimiq Pay",
+  "description": "Kitty \u2014 a shared group-money pot Mini App for Nimiq Pay",
   "license": "MIT",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,8 @@
     "test:ui": "node scripts/ui-check.mjs",
     "db:local": "wrangler d1 execute kitty-db --local --file=./schema.sql",
     "db:remote": "wrangler d1 execute kitty-db --remote --file=./schema.sql",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "test:og": "node scripts/og-check.mjs"
   },
   "dependencies": {
     "@nimiq/mini-app-sdk": "^0.1.0",

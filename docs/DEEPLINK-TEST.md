@@ -126,13 +126,19 @@ Use each platform's own debugger; they also force a cache refresh.
 | E2 | X / Twitter | [Card Validator](https://cards-dev.twitter.com/validator) | `summary_large_image` with the card | ☐ |
 | E3 | LinkedIn | [Post Inspector](https://www.linkedin.com/post-inspector/) | Card image + description | ☐ |
 | E4 | Telegram | `@WebpageBot` — send it the link | Card image; the bot forces a re-fetch | ☐ |
-| E5 | Any | `curl -sI <BASE>/og/<ID>.png` | `content-type: image/png`, `x-kitty-og: generated` | ☐ |
+| E5 | Any | `curl -sI <BASE>/og/<ID>.png` | `content-type: image/png`; `x-kitty-og: static` first, then `upgraded` on a paid plan | ☐ |
 | E6 | Any | Fill the pot further, then re-check E5 | Percentage on the card has moved | ☐ |
 
-> **`x-kitty-og` tells you which path ran.** `generated` means the live per-Kitty card;
-> `static` means generation failed and the brand card was served instead. If you ever see `static`
-> in production, previews still work — but check the Worker logs, because the pot's real numbers
-> aren't reaching the image.
+> **`x-kitty-og` tells you which path ran.**
+> `static` — the CPU-safe pre-built card, and a render has been queued. **Expected on the first
+> request for any Kitty, on any plan**, and permanently on the free plan.
+> `upgraded` — the real per-Kitty card, served from cache. Appears from the second request onward
+> wherever there is CPU headroom (paid plan).
+> `fallback` — something failed and the safe card was served.
+>
+> Seeing `static` forever is **not a fault**: one render costs ~152 ms CPU against the free plan's
+> 10 ms, so the deferred render is killed and nothing caches. Previews still work, showing the
+> generic card. The $5/mo plan turns on per-Kitty cards with no code change.
 >
 > WhatsApp in particular caches previews for a long time and does **not** offer a per-user refresh —
 > the Facebook debugger is the only lever. Test with a Kitty you don't mind burning.

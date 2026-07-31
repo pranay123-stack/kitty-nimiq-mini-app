@@ -16,12 +16,25 @@
  * Since we compose the card ourselves anyway, the layout engine bought us
  * nothing: this file writes the SVG directly and hands it to resvg, which
  * rasterises text using font buffers we embed. That removes satori and yoga
- * from the bundle (~146 KB gzipped) and removes the failure entirely.
+ * from the bundle (~146 KB gzipped) and removes that failure entirely.
  *
- * ── The hard rule ─────────────────────────────────────────────────────────
- * This module never fails. Every path returns a valid PNG. A preview that 500s
- * or serves an SVG is worse than a generic card, because the crawler caches the
- * failure and will not come back for days.
+ * ── What this module does and does not guarantee ──────────────────────────
+ * Every *catchable* failure here returns a valid PNG: a resvg throw, a WASM
+ * init error, a render that overruns the timeout, or an unknown Kitty id all
+ * fall back to the pre-built static card.
+ *
+ * A CPU-limit kill is **not** catchable. Cloudflare terminates the isolate, so
+ * no `catch` in this file runs and the caller would get error 1102 instead of
+ * an image. One render measures ~97 ms wall / ~152 ms CPU against a **10 ms**
+ * free-plan budget, so on the free plan the render *cannot* complete.
+ *
+ * That is why `renderOgPng()` is never called on the request path that answers
+ * a crawler. See `worker/index.ts`: the crawler is always served pre-built
+ * bytes (no rasterising, no CPU), and the render runs in a separate, deferred
+ * invocation whose only job is to populate the cache. If that invocation is
+ * killed for CPU — the normal case on the free plan — nothing is cached and the
+ * safe static card simply keeps being served. With CPU headroom (paid plan) it
+ * succeeds and later requests are upgraded to the real per-Kitty card.
  */
 
 import { Resvg, initWasm } from '@resvg/resvg-wasm'

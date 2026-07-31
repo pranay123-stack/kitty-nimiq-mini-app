@@ -4,13 +4,32 @@ Covers all four hardening phases. Written 2026-07-31, before deploy.
 
 - **Repo:** https://github.com/pranay123-stack/kitty-nimiq-mini-app (public, MIT)
 - **Target:** Nimiq Mini Apps Competition, **Cycle II — Aug 10 → Sep 4 2026**
-- **Automated checks:** 82 passing — 6 on-chain, 46 UI, 30 deploy
+- **Automated checks:** 91 passing — 6 on-chain, 46 UI, 9 OG lifecycle, 30 deploy
 - **Worker bundle:** 992.76 KiB gzipped against a 3072 KiB limit (68% free)
 - **Values you must fill in:** exactly one (`database_id`)
 
 ---
 
-## 🔴 Read this first: the OG image needs the paid plan
+> ## ✅ RESOLVED — Option C shipped
+>
+> The section below documents the investigation that led here. **The regression it describes is
+> fixed**: the crawler-facing request no longer rasterises, so error 1102 can no longer happen on any
+> plan. Kitty now degrades to a generic-but-valid card on free tier and auto-upgrades to per-Kitty
+> cards wherever CPU headroom exists.
+>
+> | | Free plan | Paid plan ($5/mo) |
+> |---|---|---|
+> | 1st crawler request | valid generic card (`static`) | valid generic card (`static`) |
+> | 2nd request onward | generic card | **per-Kitty card** (`upgraded`) |
+> | Error 1102 | never | never |
+>
+> **The billing decision is yours and is not assumed anywhere.** Nothing in the code, config or docs
+> requires the paid plan; it changes behaviour automatically if you take it. Measured cost of the
+> synchronous path: **0.055 ms CPU, 182× under the free budget.**
+
+---
+
+## The investigation (retained for the record): why the OG image needed this treatment
 
 **The per-Kitty Open Graph card cannot work on the Cloudflare free plan.** This was measured, not
 estimated, and it changes a claim made at the end of Phase 3.
@@ -44,24 +63,21 @@ which gets *the same* 10 ms. Caching the PNG in D1/KV has the same problem: both
 render to populate, and on free tier there is never one. Reducing the render below 10 ms is not
 available either — a 1200×630 raster is 756k pixels, and this needs a 10–15× cut, not a tune-up.
 
-### Recommendation
+### Resolution — Option C, shipped
 
-**Take the $5/month Workers paid plan.** It raises CPU to 30 s by default; 152 ms is then trivial and
-**everything works exactly as built, with zero code changes**. Against a $10,000 first prize, where
-share-preview conversion feeds a scored Marketing line item, this is not a close call.
+The crawler-facing request was split from the render:
 
-**If you want to stay on free tier, tell me and I will make it safe** — that needs a code change I
-have deliberately *not* made under the no-new-features constraint. The options, cheapest first:
+- **Synchronous path** (what a crawler hits): reads the Kitty row, checks the cache, returns
+  pre-built bytes. No rasterising. Its only CPU work is a 179 KB byte copy, measured at
+  **0.055 ms — 182× under the 10 ms free budget**. It cannot overrun on any plan.
+- **Deferred render**: a *separate* invocation (`?render=1`) triggered via `waitUntil`, with its own
+  CPU budget, whose only job is to write to the cache. A kill there cannot affect a response already
+  sent. Nothing is cached unless a render genuinely succeeded.
+- **Cache key** includes a 5% progress bucket and the settled flag, so the card follows the pot as it
+  fills rather than pinning the first render forever.
 
-| Option | Effort | Result |
-|---|---|---|
-| **A. Never attempt the render; serve the static brand card** | ~10 lines | Always a valid preview. Live numbers still reach readers via `og:description`. Loses the per-Kitty image. |
-| **B. Build-time progress buckets** (11 × 2 currencies, pre-rendered, shipped as static assets) | ~1 hour | Bar reflects real progress to ±5%, currency correct, title generic. Zero runtime CPU. |
-| **C. Static now + background render + cache** | ~20 lines | Always-valid PNG on any plan; auto-upgrades to the real card **on paid**. On free the background task is killed harmlessly after the response is already sent. Needs no config. |
-
-**Option C is what I would build**, and it is the only version where a "pre-warm at creation" is
-worth having — not as a free-tier fix, but so that on paid the *first* crawler already finds the real
-card cached. **Flagging, not committing.** Say the word.
+Still true, and still your call: **the paid plan is what makes per-Kitty cards actually appear.** It
+is no longer a correctness requirement, only a quality upgrade, and it needs no code change.
 
 ### What is unaffected by any of this
 
@@ -78,6 +94,7 @@ all other routes are I/O bound (D1 reads, RPC fetches), and network time does no
 | **1 — Deploy** | [DEPLOY.md](../DEPLOY.md), [verify-deploy.sh](../scripts/verify-deploy.sh) (30 checks); removed `APP_BASE_URL` dead config |
 | **2 — Deeplink** | Host detection; browser fallback branch that never dead-ends; dual-link sharing; [DEEPLINK-TEST.md](DEEPLINK-TEST.md) |
 | **3 — OG images** | Per-Kitty PNG card via resvg + subsetted Mulish; static fallback; full meta tags |
+| **5 — Option C** | Crawler path never rasterises (0.055 ms CPU); deferred render + bucketed cache; safe on every plan |
 | **4 — This report** | Investigation above; consolidated status |
 
 ### Notable engineering decisions
@@ -96,13 +113,14 @@ all other routes are I/O bound (D1 reads, RPC fetches), and network time does no
 
 ## Tested vs verified vs unverified
 
-### ✅ Machine-tested — 82 automated checks
+### ✅ Machine-tested — 91 automated checks
 
 | Suite | Count | Covers |
 |---|---|---|
 | `npm run test:live` | 6 | Verification logic against **Nimiq mainnet**, not mocks. ERC-20 calldata decoding; confirm/fail/unknown outcomes |
 | `npm run test:ui` | 46 | Real browser, true mobile emulation (390×844, touch) |
 | `./scripts/verify-deploy.sh` | 30 | Live URL end to end |
+| `npm run test:og` | 9 | OG lifecycle: safety on every path, deferred upgrade, fallbacks, bucket invalidation |
 | `npm run typecheck` | — | App, worker and shared |
 
 Highlights worth naming, because they encode the risky bits:
@@ -111,7 +129,9 @@ Highlights worth naming, because they encode the risky bits:
   tested end-to-end through the UI with a simulated provider.
 - A **fake transaction stays unconfirmed**, so money can never be paid out against unverified rows.
 - A **non-organizer settle returns 403**.
-- The **forced-fallback OG path** returns a valid 1200×630 PNG.
+- **Every OG path** returns a valid 1200×630 PNG — cold cache, upgraded, forced failure and unknown
+  id — so error 1102 cannot reach a crawler.
+- A **fallback is never cached** as though it were a real card.
 - **No horizontal scroll, ≥40px tap targets, no clipped `de`/`es` text** on every screen.
 
 ### 👁 Visually verified only (screenshots in `docs/screenshots/`)
@@ -143,7 +163,8 @@ Work top to bottom.
 - [ ] `npm run deploy`
 - [ ] `./scripts/verify-deploy.sh <url>` → must print **ALL CHECKS PASSED**
 - [ ] `./scripts/verify-deploy.sh --write-urls <url>` → clears all 11 doc placeholders
-- [ ] **Decide the OG plan question above** (paid, or ask me for option A/B/C)
+- [ ] **Decide the plan** — optional. Free works and previews never break; paid ($5/mo) turns on
+      per-Kitty preview cards with no code change. Nothing assumes either.
 
 ### B. Device identifier — inside Nimiq Pay ([DEPLOY.md § origin scoping](../DEPLOY.md))
 - [ ] Create a Kitty in Nimiq Pay → consent prompt appears once, showing your reason string
@@ -179,12 +200,12 @@ Work top to bottom.
 
 ---
 
-## ⚠️ One pending accuracy fix
+## Accuracy fix — done
 
-`worker/og-image.ts` opens with *"This module never fails. Every path returns a valid PNG."* The
-investigation above shows that is **false under CPU exhaustion on the free plan**. It is a comment
-only, and correcting it is a one-line change I have not made under the no-new-features constraint.
-Approve it and I will fix the comment along with whichever OG option you choose.
+`worker/og-image.ts` previously opened with *"This module never fails. Every path returns a valid
+PNG."* That was false under CPU exhaustion. The header now states the truth: every *catchable* path
+returns a valid PNG, a CPU-limit kill is not catchable, and therefore `renderOgPng()` is never called
+on the request that answers a crawler.
 
 ---
 
@@ -199,6 +220,7 @@ Re-checked against the shipped state. Accurate:
   Latin-only without emoji; preview rendering unverified.
 - **Resolved and removed** — the old "og:image is a static card, not per-Kitty" caveat.
 
-**One gap:** the README does not yet mention that the OG renderer requires the paid plan. That
-belongs there once you have decided the plan question, so it can state what actually shipped rather
-than a conditional.
+The README now also documents the shipped preview behaviour in a **Link previews** section: what the
+crawler request does, the measured 0.055 ms synchronous cost, the deferred render, and the
+`x-kitty-og` diagnostic. It states plainly that free tier serves a generic card and paid enables
+per-Kitty cards — without assuming which you will choose.

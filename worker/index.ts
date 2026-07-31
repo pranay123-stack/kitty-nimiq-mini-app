@@ -11,6 +11,7 @@ import type {
   SettleRequest,
 } from '../shared/types'
 import { isValidAddressFor, normaliseNimAddress } from '../shared/addresses'
+import { progressPct } from '../shared/money'
 import { CHAINS } from '../shared/chains'
 import { verifyEvmContribution, verifyNimContribution } from './verify'
 import { injectMeta, shareCardSvg, type ShareData } from './share'
@@ -524,6 +525,51 @@ async function staticCard(env: Env, req: Request): Promise<Uint8Array | null> {
 }
 
 /**
+ * Progress bucket for the cache key.
+ *
+ * Keyed on 5% steps rather than the exact total so a busy pot does not
+ * invalidate its card on every single contribution — that would mean a render
+ * per contribution, and a crawler would almost always land on a cold cache.
+ */
+function progressBucket(data: ShareData): number {
+  return Math.min(100, Math.floor(progressPct(data.raised, data.target) / 5) * 5)
+}
+
+/**
+ * Cache key for a rendered card.
+ *
+ * Deliberately not the request URL: that URL is identical whatever the pot's
+ * progress, so caching against it would pin the first card forever. Including
+ * the bucket means the card refreshes as the pot fills, and `settled` is in
+ * there because a paid-out Kitty draws differently at the same percentage.
+ */
+function ogCacheKey(origin: string, id: string, data: ShareData): Request {
+  const bucket = progressBucket(data)
+  const state = data.settled ? 's' : 'o'
+  return new Request(`${origin}/__og-cache/${id}/${bucket}/${state}`)
+}
+
+type OgMode = 'upgraded' | 'static' | 'fallback' | 'generated'
+
+function pngResponse(
+  png: Uint8Array | ReadableStream | null,
+  { mode, cacheSeconds }: { mode: OgMode; cacheSeconds: number },
+): Response {
+  return new Response(png as unknown as BodyInit, {
+    headers: {
+      'content-type': 'image/png',
+      'cache-control': `public, max-age=${cacheSeconds}`,
+      // Diagnostic, and documented in DEEPLINK-TEST.md Matrix E:
+      //   upgraded  – the real per-Kitty card, served from cache
+      //   static    – the CPU-safe pre-built card; a render has been queued
+      //   fallback  – the pre-built card because something failed
+      //   generated – a fresh render (only the internal ?render=1 path)
+      'x-kitty-og': mode,
+    },
+  })
+}
+
+/**
  * Per-Kitty Open Graph image.
  *
  * Always PNG, always 200. Social clients refuse SVG and cache whatever they
@@ -533,9 +579,32 @@ async function staticCard(env: Env, req: Request): Promise<Uint8Array | null> {
  * `?fallback=1` forces the static path, which is how the test suite exercises
  * the failure branch without having to break the renderer.
  */
+/**
+ * Per-Kitty Open Graph image.
+ *
+ * ── The rule this route exists to enforce ─────────────────────────────────
+ * The crawler-facing request **never rasterises anything**. It does at most two
+ * I/O reads — the Kitty row and either a cache entry or a pre-built PNG — and
+ * hands back bytes. Rasterising here would cost ~152 ms of CPU against a 10 ms
+ * free-plan budget, and a CPU overrun is not catchable: Cloudflare kills the
+ * isolate and the crawler gets error 1102, no image at all, cached hard by
+ * every platform. That is strictly worse than a generic card.
+ *
+ * So: serve safe bytes now, and queue the real render as a *separate*
+ * invocation (`?render=1`) whose only job is to fill the cache. If that
+ * invocation dies for CPU — the normal case on the free plan — nothing is
+ * cached, no request was harmed, and the static card keeps being served. With
+ * CPU headroom it succeeds and the next request is upgraded to the real card.
+ *
+ * Query flags, both for tests rather than production:
+ *   ?render=1   – do the render inline and cache it (the deferred path)
+ *   ?fallback=1 – force the static path, to exercise the safety net
+ */
 app.get('/og/:file', async (c) => {
   const file = c.req.param('file')
   const id = file.replace(/\.(png|svg)$/, '')
+  const url = new URL(c.req.url)
+  const origin = url.origin
 
   // The SVG endpoint stays for in-app use and the growth kit, where SVG is fine.
   if (file.endsWith('.svg')) {
@@ -546,67 +615,55 @@ app.get('/og/:file', async (c) => {
     })
   }
 
-  const cache = caches.default
-  const cacheKey = new Request(new URL(c.req.url).toString(), { method: 'GET' })
-  const forceFallback = new URL(c.req.url).searchParams.get('fallback') === '1'
+  const serveStatic = async (mode: OgMode, cacheSeconds: number) => {
+    const bytes = await staticCard(c.env, c.req.raw)
+    if (!bytes) return c.notFound()
+    return pngResponse(bytes, { mode, cacheSeconds })
+  }
 
-  if (!forceFallback) {
-    const hit = await cache.match(cacheKey)
-    if (hit) return hit
+  if (url.searchParams.get('fallback') === '1') {
+    return serveStatic('fallback', 60)
   }
 
   const data = await loadShareData(c.env, id)
   if (!data) {
     // Unknown id: still a valid image, so a mistyped link degrades to the brand
-    // card instead of a broken-image icon in someone's chat.
-    const fallback = await staticCard(c.env, c.req.raw)
-    if (!fallback) return c.notFound()
-    return pngResponse(fallback, { generated: false, cacheSeconds: 300 })
+    // card rather than a broken-image icon in someone's chat.
+    return serveStatic('fallback', 300)
   }
 
-  let png: Uint8Array
-  let generated: boolean
+  const cache = caches.default
+  const key = ogCacheKey(origin, id, data)
 
-  if (forceFallback) {
-    const fallback = await staticCard(c.env, c.req.raw)
-    if (!fallback) return c.notFound()
-    png = fallback
-    generated = false
-  } else {
+  // ── The deferred render. A separate invocation with its own CPU budget, so
+  //    a kill here can never touch a response already sent to a crawler.
+  if (url.searchParams.get('render') === '1') {
     try {
-      const result = await renderOgPng(data, () => staticCard(c.env, c.req.raw))
-      png = result.png
-      generated = result.generated
+      const { png, generated } = await renderOgPng(data, () => staticCard(c.env, c.req.raw))
+      if (!generated) return pngResponse(png, { mode: 'fallback', cacheSeconds: 60 })
+
+      // Only a genuinely generated card is ever cached — never a fallback, and
+      // never a partial result, since a throw skips this entirely.
+      const cached = pngResponse(png, { mode: 'upgraded', cacheSeconds: 600 })
+      await cache.put(key, cached.clone())
+      return pngResponse(png, { mode: 'generated', cacheSeconds: 600 })
     } catch {
-      const fallback = await staticCard(c.env, c.req.raw)
-      if (!fallback) return c.notFound()
-      png = fallback
-      generated = false
+      return serveStatic('fallback', 60)
     }
   }
 
-  // Rendering costs real CPU, so cache it. Ten minutes keeps a filling pot's
-  // preview honest without re-rendering for every crawler that comes past.
-  const response = pngResponse(png, { generated, cacheSeconds: generated ? 600 : 60 })
-  if (generated && !forceFallback) {
-    c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))
-  }
-  return response
-})
+  const hit = await cache.match(key)
+  if (hit) return hit // the real per-Kitty card, already rendered
 
-function pngResponse(
-  png: Uint8Array,
-  { generated, cacheSeconds }: { generated: boolean; cacheSeconds: number },
-): Response {
-  return new Response(png as unknown as BodyInit, {
-    headers: {
-      'content-type': 'image/png',
-      'cache-control': `public, max-age=${cacheSeconds}`,
-      // Makes it obvious in curl -I whether the dynamic path actually ran.
-      'x-kitty-og': generated ? 'generated' : 'static',
-    },
-  })
-}
+  // Cache miss: hand back safe bytes immediately, and ask a fresh invocation to
+  // render in the background. waitUntil lets that outlive this response.
+  c.executionCtx.waitUntil(
+    fetch(`${origin}/og/${encodeURIComponent(id)}.png?render=1`).catch(() => undefined),
+  )
+
+  // Short TTL so a crawler that re-checks soon picks up the upgraded card.
+  return serveStatic('static', 60)
+})
 
 /**
  * Serve the SPA shell for a Kitty with per-Kitty Open Graph tags baked in, so
