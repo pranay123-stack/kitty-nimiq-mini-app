@@ -1,0 +1,28 @@
+name = "kitty"
+main = "worker/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# One Worker serves both the built SPA and the /api routes, so there is a single
+# deploy target and a single origin — which also keeps the Mini App's device
+# identifier stable, since it is scoped to the origin.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+# /k/* and /og/* are handled by the Worker so shared links carry live Open Graph
+# tags; everything else is served straight from static assets.
+run_worker_first = ["/api/*", "/k/*", "/og/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kitty-db"
+# Replace with the id printed by: wrangler d1 create kitty-db
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[vars]
+# Public base URL of the deployed Mini App. Used to build share links and the
+# nimiqpay:// deeplink. Override per-environment.
+APP_BASE_URL = "https://kitty.example.workers.dev"
+# Nimiq RPC used to verify NIM contributions server-side.
+NIMIQ_RPC_URL = "https://rpc.nimiqwatch.com"

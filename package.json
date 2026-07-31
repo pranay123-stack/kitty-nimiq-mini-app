@@ -1,0 +1,34 @@
+{
+  "name": "kitty-nimiq-mini-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Kitty — a shared group-money pot Mini App for Nimiq Pay",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "wrangler dev",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --force",
+    "test:live": "esbuild scripts/verify-live-test.ts --bundle --platform=node --format=esm --outfile=node_modules/.tmp/livetest.mjs --log-level=warning && node node_modules/.tmp/livetest.mjs",
+    "db:local": "wrangler d1 execute kitty-db --local --file=./schema.sql",
+    "db:remote": "wrangler d1 execute kitty-db --remote --file=./schema.sql",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@nimiq/mini-app-sdk": "^0.1.0",
+    "hono": "^4.6.14",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241230.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "wrangler": "^4.86.0"
+  }
+}

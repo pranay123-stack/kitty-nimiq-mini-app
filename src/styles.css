@@ -1,0 +1,672 @@
+/* ============================================================
+   Kitty — design system
+   Palette follows Nimiq brand so the Mini App reads as part of
+   Nimiq Pay rather than a website embedded inside it.
+   ============================================================ */
+
+:root {
+  --nq-blue: #1f2348;
+  --nq-blue-deep: #161a35;
+  --nq-blue-soft: #2a2f5c;
+  --nq-light-blue: #0582ca;
+  --nq-sky: #0ca6fe;
+  --nq-gold: #e9b213;
+  --nq-orange: #fc8702;
+  --nq-green: #21bca5;
+  --nq-red: #d94432;
+  --nq-purple: #5f4b8b;
+
+  --grad-warm: linear-gradient(135deg, var(--nq-gold), var(--nq-orange));
+  --grad-cool: linear-gradient(135deg, var(--nq-sky), var(--nq-light-blue));
+  --grad-hero: linear-gradient(160deg, #2a2f5c 0%, #1f2348 55%, #161a35 100%);
+
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --surface-2: #eef0f7;
+  --text: var(--nq-blue);
+  --text-dim: rgba(31, 35, 72, 0.6);
+  --text-faint: rgba(31, 35, 72, 0.38);
+  --border: rgba(31, 35, 72, 0.1);
+
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 30px;
+
+  --shadow-sm: 0 1px 2px rgba(31, 35, 72, 0.06);
+  --shadow: 0 4px 16px rgba(31, 35, 72, 0.08);
+  --shadow-lg: 0 12px 40px rgba(31, 35, 72, 0.16);
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12152b;
+    --surface: #1c2043;
+    --surface-2: #252a52;
+    --text: #f2f4fb;
+    --text-dim: rgba(242, 244, 251, 0.62);
+    --text-faint: rgba(242, 244, 251, 0.38);
+    --border: rgba(242, 244, 251, 0.12);
+    --shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.45);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Mulish', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* A WebView that bounces at the edges feels like a web page, not an app. */
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* ------------------------------------------------------------- layout */
+
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  max-width: 520px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--safe-top) + 12px) 20px calc(var(--safe-bottom) + 24px);
+  animation: screen-in 0.32s var(--ease);
+}
+
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Reserve room for the fixed action bar so content is never hidden behind it. */
+.screen--with-dock {
+  padding-bottom: calc(var(--safe-bottom) + 104px);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.grow {
+  flex: 1;
+}
+
+/* --------------------------------------------------------- typography */
+
+h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+h2 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.muted {
+  color: var(--text-dim);
+}
+.faint {
+  color: var(--text-faint);
+}
+.tiny {
+  font-size: 13px;
+}
+.mono {
+  font-family: ui-monospace, 'SF Mono', 'Roboto Mono', monospace;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+.center {
+  text-align: center;
+}
+
+/* ------------------------------------------------------------ buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  /* 52px keeps every primary action comfortably inside the thumb zone. */
+  min-height: 52px;
+  padding: 0 22px;
+  border: none;
+  border-radius: var(--radius-xl);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.14s var(--ease), opacity 0.14s var(--ease), box-shadow 0.14s var(--ease);
+  user-select: none;
+  width: 100%;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn--primary {
+  background: var(--grad-warm);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(252, 135, 2, 0.32);
+}
+.btn--cool {
+  background: var(--grad-cool);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(5, 130, 202, 0.3);
+}
+.btn--ghost {
+  background: transparent;
+  color: var(--text-dim);
+  box-shadow: none;
+}
+.btn--outline {
+  background: transparent;
+  border: 1.5px solid var(--border);
+}
+.btn--sm {
+  min-height: 40px;
+  font-size: 14px;
+  padding: 0 16px;
+  width: auto;
+}
+
+/* Fixed bottom dock: the primary action is always one thumb-reach away. */
+.dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  padding: 12px 20px calc(var(--safe-bottom) + 12px);
+  background: linear-gradient(to top, var(--bg) 62%, transparent);
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* -------------------------------------------------------------- cards */
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+}
+.card--hero {
+  background: var(--grad-hero);
+  color: #fff;
+  padding: 24px;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+}
+.card--hero .muted {
+  color: rgba(255, 255, 255, 0.66);
+}
+.card--hero .faint {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+/* ----------------------------------------------------------- progress */
+
+.progress {
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+  position: relative;
+}
+.progress__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--grad-warm);
+  /* Slow, springy fill — this is the moment the app is judged on. */
+  transition: width 0.9s var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+.progress__fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.45),
+    transparent
+  );
+  animation: shimmer 2.2s infinite;
+}
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(200%);
+  }
+}
+.progress--complete .progress__fill {
+  background: linear-gradient(135deg, var(--nq-green), #17d3b5);
+}
+
+.amount-big {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- input */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding-left: 4px;
+}
+.input {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color 0.16s var(--ease), box-shadow 0.16s var(--ease);
+}
+.input:focus {
+  border-color: var(--nq-sky);
+  box-shadow: 0 0 0 3px rgba(12, 166, 254, 0.14);
+}
+.input--error {
+  border-color: var(--nq-red);
+}
+.input--amount {
+  font-size: 32px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  min-height: 68px;
+}
+textarea.input {
+  resize: none;
+  min-height: 72px;
+}
+.error-text {
+  color: var(--nq-red);
+  font-size: 13px;
+  padding-left: 4px;
+}
+
+/* Quick-pick chips remove typing from the critical path. */
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chip {
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1.5px solid transparent;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s var(--ease);
+  font-variant-numeric: tabular-nums;
+}
+.chip:active {
+  transform: scale(0.95);
+}
+.chip--active {
+  background: var(--nq-blue);
+  color: #fff;
+  border-color: var(--nq-blue);
+}
+@media (prefers-color-scheme: dark) {
+  .chip--active {
+    background: var(--nq-sky);
+    border-color: var(--nq-sky);
+  }
+}
+
+/* --------------------------------------------------------- segmented */
+
+.segmented {
+  display: flex;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 4px;
+  gap: 4px;
+}
+.segmented__item {
+  flex: 1;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.18s var(--ease);
+}
+.segmented__item--active {
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+}
+@media (prefers-color-scheme: dark) {
+  /* In dark mode --surface is *darker* than the track, so the selected item
+     read as the inactive one. Lift it instead. */
+  .segmented__item--active {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
+}
+
+/* ------------------------------------------------------- contributors */
+
+.contributor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  animation: contributor-in 0.4s var(--ease) backwards;
+}
+.contributor:last-child {
+  border-bottom: none;
+}
+@keyframes contributor-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 15px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.badge--pending {
+  background: rgba(233, 178, 19, 0.16);
+  color: #a67c00;
+}
+.badge--confirmed {
+  background: rgba(33, 188, 165, 0.16);
+  color: #12796a;
+}
+@media (prefers-color-scheme: dark) {
+  .badge--pending {
+    color: var(--nq-gold);
+  }
+  .badge--confirmed {
+    color: var(--nq-green);
+  }
+}
+
+/* ----------------------------------------------------------- skeleton */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    rgba(127, 127, 160, 0.12) 37%,
+    var(--surface-2) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton 1.3s ease infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes skeleton {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}
+
+/* ------------------------------------------------------------- states */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-dim);
+}
+.empty__icon {
+  font-size: 44px;
+  opacity: 0.65;
+  animation: float 3.4s ease-in-out infinite;
+}
+@keyframes float {
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+/* ------------------------------------------------------------- toasts */
+
+.toast-host {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: calc(var(--safe-top) + 10px);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  padding: 0 16px;
+}
+.toast {
+  background: var(--nq-blue);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  font-size: 14px;
+  font-weight: 600;
+  animation: toast-in 0.3s var(--ease);
+  max-width: 100%;
+}
+.toast--error {
+  background: var(--nq-red);
+}
+.toast--success {
+  background: var(--nq-green);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.96);
+  }
+}
+
+/* ------------------------------------------------------------- sheets */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(15, 18, 40, 0.5);
+  backdrop-filter: blur(3px);
+  animation: fade-in 0.22s var(--ease);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--bg);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: 10px 20px calc(var(--safe-bottom) + 20px);
+  box-shadow: var(--shadow-lg);
+  animation: sheet-up 0.32s var(--ease);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+.sheet__handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  margin: 0 auto 16px;
+}
+
+/* ---------------------------------------------------------- celebrate */
+
+.confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 80;
+  overflow: hidden;
+}
+.confetti__bit {
+  position: absolute;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  animation: fall linear forwards;
+}
+@keyframes fall {
+  from {
+    transform: translateY(-8vh) rotate(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(108vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.pop {
+  animation: pop 0.5s var(--ease);
+}
+@keyframes pop {
+  40% {
+    transform: scale(1.14);
+  }
+}
+
+/* Anyone who has asked the OS to calm down gets a calm app. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
