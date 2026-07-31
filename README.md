@@ -186,19 +186,27 @@ Open <http://127.0.0.1:8787>. Wallet actions need Nimiq Pay; everything else wor
 
 ### Deploying
 
+**See [DEPLOY.md](DEPLOY.md) for the full walkthrough** — it is copy-paste literal and covers the
+failure modes. The short version:
+
 ```bash
-# 1. create the database and copy the printed id into wrangler.toml
-npx wrangler d1 create kitty-db
+npx wrangler d1 create kitty-db        # 1. paste the printed id into wrangler.toml
+npm run db:remote                      # 2. create the tables on the REMOTE database
+npm run deploy                         # 3. ship
 
-# 2. apply the schema to the remote database
-npx wrangler d1 execute kitty-db --remote --file=./schema.sql
-
-# 3. set APP_BASE_URL in wrangler.toml to your deployed URL, then
-npm run deploy
+./scripts/verify-deploy.sh https://<your-url>   # 4. prove it actually works
 ```
 
-Your Mini App URL is the Worker URL. The share deeplink is
-`nimiqpay://miniapp?url=<that URL>`.
+**`database_id` in `wrangler.toml` is the only value you must edit.** Share links, the
+`nimiqpay://` deeplink and Open Graph URLs are all derived from the incoming request's origin, so
+they are correct on `workers.dev`, a custom domain and preview deploys with no configuration — and
+cannot be set wrong.
+
+The *origin itself* does matter, though: the Mini App device identifier is scoped per origin, so
+moving domains after launch gives every existing organizer a new identifier and they lose the
+ability to pay out Kitties they already created. Pick the hostname before you launch.
+
+Your Mini App URL is the Worker URL. The share deeplink is `nimiqpay://miniapp?url=<that URL>`.
 
 ### Checks
 
@@ -206,6 +214,8 @@ Your Mini App URL is the Worker URL. The share deeplink is
 npm run typecheck   # tsc across app, worker and shared
 npm run test:live   # on-chain verification logic, against Nimiq mainnet
 npm run test:ui     # drives the real app in a real browser (needs it running)
+
+./scripts/verify-deploy.sh <url>   # proves a live deployment works end to end
 ```
 
 **`test:live` is a live test on purpose.** The entire risk in `verify.ts` is whether our assumptions

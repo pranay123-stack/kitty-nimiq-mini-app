@@ -104,9 +104,11 @@ Cloudflare Workers + D1 · MIT licensed.
 
 ## Pre-submission checklist
 
-- [ ] Deployed and reachable at a public URL
-- [ ] `wrangler.toml` → `database_id` and `APP_BASE_URL` set to real values
+- [ ] Deployed and reachable at a public URL (see [DEPLOY.md](../DEPLOY.md))
+- [ ] `wrangler.toml` → `database_id` set to the real id (the only value to edit)
 - [ ] Remote D1 schema applied (`npm run db:remote`)
+- [ ] `./scripts/verify-deploy.sh <url>` prints ALL CHECKS PASSED
+- [ ] `./scripts/verify-deploy.sh --write-urls <url>` run, so no `<your-worker>` placeholders remain
 - [ ] Deeplink verified from WhatsApp, Telegram and iMessage on iOS **and** Android
 - [ ] One real end-to-end pot completed, including a real payout
 - [ ] Both rails exercised with real funds (a NIM pot and a USDT pot)

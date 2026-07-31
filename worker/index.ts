@@ -18,7 +18,11 @@ import { injectMeta, shareCardSvg, type ShareData } from './share'
 export interface Env {
   DB: D1Database
   ASSETS: Fetcher
-  APP_BASE_URL: string
+  /**
+   * Nimiq RPC endpoint for server-side verification. Everything else — share
+   * links, deeplinks, Open Graph URLs — is derived from the request origin
+   * rather than configured, so there is no base-URL setting to get wrong.
+   */
   NIMIQ_RPC_URL: string
 }
 

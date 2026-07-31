@@ -17,12 +17,21 @@ run_worker_first = ["/api/*", "/k/*", "/og/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "kitty-db"
-# Replace with the id printed by: wrangler d1 create kitty-db
+# ▶ THE ONLY VALUE YOU MUST EDIT. Paste the id printed by:
+#     npx wrangler d1 create kitty-db
 database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
 [vars]
-# Public base URL of the deployed Mini App. Used to build share links and the
-# nimiqpay:// deeplink. Override per-environment.
-APP_BASE_URL = "https://kitty.example.workers.dev"
-# Nimiq RPC used to verify NIM contributions server-side.
+# Nimiq RPC used to verify NIM contributions server-side. The default is a
+# public node and works as-is; point it at your own node for production traffic.
 NIMIQ_RPC_URL = "https://rpc.nimiqwatch.com"
+
+# Note: there is deliberately no APP_BASE_URL. Share links, the nimiqpay://
+# deeplink and Open Graph tags are all derived from the incoming request's
+# origin, so the app is correct on workers.dev, a custom domain and preview
+# deploys without any configuration — and cannot be misconfigured.
+#
+# Do be aware that the *origin itself* matters: the Mini App device identifier
+# is scoped per origin, so moving to a different domain later gives every
+# existing organizer a new identifier and they lose the ability to pay out
+# Kitties they created on the old one. Pick the hostname before you launch.
