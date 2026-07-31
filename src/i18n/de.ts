@@ -81,7 +81,24 @@ export const de: Dictionary = {
   'settle.done': 'Die Kitty ist ausgezahlt.',
   'settle.onlyOrganizer': 'Nur die organisierende Person kann auszahlen.',
 
+  'host.viewOnly': 'Nur ansehen',
+  'host.branchTitle': 'Du siehst das im Browser',
+  'host.branchBody':
+    'Hier siehst du alles. Zum Einzahlen brauchst du Nimiq Pay — dort liegt deine Wallet.',
+  'host.openInPay': 'In Nimiq Pay öffnen',
+  'host.continueBrowser': 'Im Browser weiter (nur ansehen)',
+  'host.chipInNeedsPay': 'Zum Einzahlen in Nimiq Pay öffnen',
+  'host.noAppTitle': 'Nichts passiert?',
+  'host.noAppBody':
+    'Entweder ist Nimiq Pay nicht installiert, oder dieser In-App-Browser hat den Wechsel blockiert. Öffne die Seite zuerst in Safari oder Chrome.',
+  'host.getApp': 'Nimiq Pay holen',
+  'host.homeBranchTitle': 'Kitty funktioniert am besten in Nimiq Pay',
+  'host.homeBranchBody':
+    'Hier kannst du stöbern, aber für eigene Kittys und Einzahlungen brauchst du deine Wallet.',
+
   'share.text': 'Ich habe eine Kitty für {title} gestartet — zahlst du mit ein?',
+  'share.payLabel': 'In Nimiq Pay öffnen:',
+  'share.webLabel': 'Kein Nimiq Pay? Dieser Link geht in jedem Browser:',
   'share.copied': 'Link kopiert',
   'share.deeplinkCopied': 'Nimiq-Pay-Link kopiert',
   'share.copyLink': 'Link kopieren',

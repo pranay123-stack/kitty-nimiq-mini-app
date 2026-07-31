@@ -163,6 +163,10 @@ echo
 echo "4. Sharing"
 
 if [ -n "$KID" ]; then
+  # The web fallback is what a stripped deeplink lands on, so it must be solid.
+  if [ "$(code "$BASE/k/$KID")" = "200" ]; then ok "web fallback /k/<id> → 200"
+  else bad "web fallback /k/<id> did not return 200" "Shared links will dead-end"; fi
+
   KPAGE="$(get "$BASE/k/$KID")"
 
   if printf '%s' "$KPAGE" | grep -q 'og:title'; then ok "/k/<id> injects Open Graph tags"

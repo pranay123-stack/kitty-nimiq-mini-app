@@ -5,7 +5,7 @@ import { api, ApiFailure } from '../lib/api'
 import { useI18n } from '../i18n'
 import { formatAmount, fromWire, progressPct } from '../../shared/money'
 import { createRail, railDecimals, railSymbol } from '../rails'
-import { deepLink, shareKitty, copyText, tap } from '../lib/host'
+import { deepLink, shareKitty, copyText, tap, openInNimiqPay } from '../lib/host'
 import { ensureDeviceId, peekDeviceId } from '../lib/device'
 import {
   Avatar,
@@ -18,6 +18,7 @@ import {
 import { ContributeSheet, type ContributionOutcome } from '../components/ContributeSheet'
 import { SettleSheet } from '../components/SettleSheet'
 import { SuccessScreen } from '../components/SuccessScreen'
+import { BrowserBranch, ViewOnlyBadge, useHostMode } from '../components/HostBranch'
 
 /** Milestones that deserve a celebration, in percent. */
 const MILESTONES = [25, 50, 75, 100]
@@ -39,6 +40,12 @@ export function KittyScreen({
   const [settling, setSettling] = useState(false)
   const [success, setSuccess] = useState<ContributionOutcome | null>(null)
   const [fire, setFire] = useState(0)
+
+  const hostMode = useHostMode()
+  const inBrowser = hostMode === 'browser'
+  // Dismissing collapses the branch to a badge — the visitor keeps reading, and
+  // the hand-off is still one tap away in the dock.
+  const [branchDismissed, setBranchDismissed] = useState(false)
 
   // Tracks the highest milestone already celebrated so a poll that returns the
   // same total doesn't re-fire confetti every few seconds.
@@ -120,6 +127,8 @@ export function KittyScreen({
       kittyId: view.kitty.id,
       title: view.kitty.title,
       text: t('share.text', { title: view.kitty.title }),
+      payLabel: t('share.payLabel'),
+      webLabel: t('share.webLabel'),
     })
     if (result.method === 'clipboard') onToast('share.copied', 'success')
     if (result.method === 'failed') onToast('err.failed', 'error')
@@ -187,12 +196,22 @@ export function KittyScreen({
         <button className="btn btn--ghost btn--sm" onClick={() => nav.go({ name: 'home' })}>
           ‹ {t('app.name')}
         </button>
-        {kitty.organizerName && (
-          <span className="tiny faint">
-            {t('kitty.organizer')}: {kitty.organizerName}
-          </span>
-        )}
+        <div className="row" style={{ gap: 8 }}>
+          {inBrowser && <ViewOnlyBadge />}
+          {kitty.organizerName && (
+            <span className="tiny faint">
+              {t('kitty.organizer')}: {kitty.organizerName}
+            </span>
+          )}
+        </div>
       </header>
+
+      {/* The branch sits above the pot but never replaces it: a visitor who
+          arrived from a stripped deeplink still sees the progress and the
+          contributor wall, which is what makes them want to take part. */}
+      {inBrowser && !branchDismissed && (
+        <BrowserBranch kittyId={kitty.id} onDismiss={() => setBranchDismissed(true)} />
+      )}
 
       <section className={`card card--hero ${complete ? 'pop' : ''}`}>
         <div className="row" style={{ gap: 10, marginBottom: 14 }}>
@@ -303,11 +322,24 @@ export function KittyScreen({
       </button>
 
       <div className="dock">
-        {!kitty.settledAt && (
-          <Button variant="primary" onClick={() => setContributing(true)}>
-            {t('kitty.contribute')}
-          </Button>
-        )}
+        {!kitty.settledAt &&
+          (inBrowser ? (
+            // In a browser the wallet does not exist, so the primary action is
+            // the hand-off rather than a button that can only fail.
+            <Button
+              variant="primary"
+              onClick={() => {
+                setBranchDismissed(false)
+                openInNimiqPay(kitty.id, () => setBranchDismissed(false))
+              }}
+            >
+              {t('host.chipInNeedsPay')}
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={() => setContributing(true)}>
+              {t('kitty.contribute')}
+            </Button>
+          ))}
         <div className="row" style={{ gap: 8 }}>
           <Button variant="outline" onClick={() => void share()}>
             {t('kitty.share')}

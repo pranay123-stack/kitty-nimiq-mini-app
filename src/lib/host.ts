@@ -25,6 +25,79 @@ export function isInsideNimiqPay(): boolean {
   return typeof window !== 'undefined' && (!!window.nimiqPay || !!window.nimiq)
 }
 
+/**
+ * Where the app is running.
+ *
+ * There is deliberately no `'detecting'` state. Nimiq Pay injects both the
+ * provider and the host context *before page scripts run*, so the synchronous
+ * check is right in practice — and a link that arrives stripped of its scheme
+ * must never land on a spinner. We render the browser branch immediately and
+ * upgrade if a provider turns up late.
+ */
+export type HostMode = 'nimiq-pay' | 'browser'
+
+export function detectHostMode(): HostMode {
+  return isInsideNimiqPay() ? 'nimiq-pay' : 'browser'
+}
+
+/**
+ * Watch briefly for a provider that arrives after first paint.
+ *
+ * Belt and braces for a host build that injects late: we have already shown a
+ * usable screen, so this only ever upgrades browser → nimiq-pay, never the
+ * reverse. Returns an unsubscribe function.
+ */
+export function watchForProvider(
+  onFound: () => void,
+  { timeoutMs = 2500, intervalMs = 150 }: { timeoutMs?: number; intervalMs?: number } = {},
+): () => void {
+  if (isInsideNimiqPay()) return () => undefined
+
+  let elapsed = 0
+  const timer = setInterval(() => {
+    elapsed += intervalMs
+    if (isInsideNimiqPay()) {
+      clearInterval(timer)
+      onFound()
+    } else if (elapsed >= timeoutMs) {
+      clearInterval(timer)
+    }
+  }, intervalMs)
+
+  return () => clearInterval(timer)
+}
+
+/** Where to send someone who does not have Nimiq Pay installed. */
+export const NIMIQ_PAY_URL = 'https://www.nimiq.com/nimiq-pay/'
+
+/**
+ * Try to hand off to Nimiq Pay from a plain browser.
+ *
+ * There is no reliable way to detect whether a custom scheme resolved — the
+ * browser simply does nothing when the app is absent. So we fire the deeplink
+ * and, if the page is still visible a moment later, surface the install link
+ * rather than leaving the user staring at a page that did nothing.
+ */
+export function openInNimiqPay(kittyId: string | null, onNoApp: () => void): void {
+  const target = kittyId ? deepLink(kittyId) : appDeepLink()
+  const startedAt = Date.now()
+
+  const timer = setTimeout(() => {
+    // If we were backgrounded, the hand-off worked; a long gap means the OS
+    // switched away and came back rather than never leaving at all.
+    if (document.visibilityState === 'visible' && Date.now() - startedAt < 2500) {
+      onNoApp()
+    }
+  }, 1200)
+
+  const cancel = () => {
+    if (document.visibilityState === 'hidden') clearTimeout(timer)
+  }
+  document.addEventListener('visibilitychange', cancel, { once: true })
+
+  window.location.href = target
+}
+
 export function appBaseUrl(): string {
   return window.location.origin
 }
@@ -42,6 +115,35 @@ export function deepLink(kittyId: string): string {
   return `nimiqpay://miniapp?url=${encodeURIComponent(webLink(kittyId))}`
 }
 
+/** Deeplink to the app itself, for someone who has no particular Kitty yet. */
+export function appDeepLink(): string {
+  return `nimiqpay://miniapp?url=${encodeURIComponent(appBaseUrl())}`
+}
+
+/**
+ * The message we hand to the OS share sheet.
+ *
+ * Both links, every time, deliberately. A deeplink alone is fragile: several
+ * chat clients strip or refuse to linkify a custom scheme, and anyone without
+ * Nimiq Pay installed gets nothing at all. The https link always resolves, and
+ * it is also the one that produces the rich preview with live progress — which
+ * is the thing that actually makes people tap.
+ */
+export function shareMessage(params: {
+  kittyId: string
+  intro: string
+  payLabel: string
+  webLabel: string
+}): { text: string; url: string; deeplink: string } {
+  const web = webLink(params.kittyId)
+  const deep = deepLink(params.kittyId)
+  return {
+    text: `${params.intro}\n\n${params.payLabel} ${deep}\n\n${params.webLabel}`,
+    url: web,
+    deeplink: deep,
+  }
+}
+
 export interface ShareResult {
   method: 'native' | 'clipboard' | 'failed'
 }
@@ -54,13 +156,25 @@ export interface ShareResult {
 export async function shareKitty(params: {
   kittyId: string
   title: string
+  /** Human intro line, e.g. "I started a Kitty for X — chip in?" */
   text: string
+  /** Prefix for the deeplink line, e.g. "Open in Nimiq Pay:" */
+  payLabel: string
+  /** Trailing line explaining the https link, which the sheet appends as `url`. */
+  webLabel: string
 }): Promise<ShareResult> {
-  const url = webLink(params.kittyId)
+  const { text, url } = shareMessage({
+    kittyId: params.kittyId,
+    intro: params.text,
+    payLabel: params.payLabel,
+    webLabel: params.webLabel,
+  })
 
   if (navigator.share) {
     try {
-      await navigator.share({ title: params.title, text: params.text, url })
+      // `url` carries the https link so the target app generates the rich
+      // preview from it; the deeplink rides along inside `text`.
+      await navigator.share({ title: params.title, text, url })
       return { method: 'native' }
     } catch (err) {
       // AbortError means the user closed the sheet: that is not a failure and
@@ -70,7 +184,8 @@ export async function shareKitty(params: {
   }
 
   try {
-    await navigator.clipboard.writeText(`${params.text} ${url}`)
+    // The clipboard path carries both links too — same reasoning as above.
+    await navigator.clipboard.writeText(`${text} ${url}`)
     return { method: 'clipboard' }
   } catch {
     return { method: 'failed' }

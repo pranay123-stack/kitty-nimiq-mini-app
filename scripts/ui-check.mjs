@@ -128,7 +128,10 @@ async function main() {
     args: ['--no-sandbox', '--disable-gpu', '--font-render-hinting=none'],
   })
 
-  const open = async (path, { locale, scheme = 'dark', withDevice = true } = {}) => {
+  const open = async (
+    path,
+    { locale, scheme = 'dark', withDevice = true, insideNimiqPay = false, wallet = 'accept' } = {},
+  ) => {
     const page = await browser.newPage()
     await page.setViewport(PHONE)
     if (locale) await page.setExtraHTTPHeaders({ 'Accept-Language': locale })
@@ -138,6 +141,36 @@ async function main() {
         Object.defineProperty(navigator, 'language', { get: () => l })
         Object.defineProperty(navigator, 'languages', { get: () => [l] })
       }, locale)
+    }
+    if (insideNimiqPay) {
+      // Stand in for the host injection. The app decides which branch to show
+      // from the presence of these globals, exactly as it does in Nimiq Pay.
+      // `wallet` selects how the fake provider answers a send:
+      //   'reject' — returns {error:{...}} the way the real provider does when
+      //              the user declines, which is the footgun worth testing
+      //   'accept' — returns a serialized transaction string
+      await page.evaluateOnNewDocument((walletMode) => {
+        const ADDRESS = 'NQ27 1EE2 A5R4 LR8J QXVQ 0F4H STFD BV9M 8T7P'
+        const send = async () =>
+          walletMode === 'reject'
+            ? { error: { type: 'REJECTED', message: 'User rejected the request' } }
+            : 'aa'.repeat(96) // stand-in serialized transaction
+
+        window.nimiqPay = {
+          language: 'en',
+          requestDeviceIdentifier: async () => 'cd'.repeat(32),
+        }
+        window.nimiq = {
+          connected: true,
+          connect: async () => undefined,
+          disconnect: () => undefined,
+          listAccounts: async () => [ADDRESS],
+          isConsensusEstablished: async () => true,
+          getBlockNumber: async () => 1,
+          sendBasicTransaction: send,
+          sendBasicTransactionWithData: send,
+        }
+      }, wallet)
     }
     if (withDevice) {
       await page.evaluateOnNewDocument((id) => {
@@ -175,50 +208,214 @@ async function main() {
   }
 
   console.log('\nContribute sheet (the core interaction)')
-  {
-    const page = await open(`/k/${kitty.id}`)
-    const tapped = await page.evaluate(() => {
-      const btn = [...document.querySelectorAll('button')].find((b) =>
+
+  /** Open the sheet and select the first suggested amount. */
+  const openSheetAndFill = async (page) => {
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('.dock button')].find((b) =>
         /chip in/i.test(b.textContent ?? ''),
       )
-      if (!btn) return false
-      btn.click()
-      return true
+      btn?.click()
     })
-    if (!tapped) bad('contribute sheet opens', 'Chip in button not found')
-    else {
-      await new Promise((r) => setTimeout(r, 600))
-      const visible = await page.$('.sheet')
-      if (!visible) bad('contribute sheet opens', '.sheet not rendered')
-      else {
-        ok('contribute sheet opens')
-        await assertNoHScroll(page, 'contribute sheet')
-        await shoot(page, 'contribute')
+    await new Promise((r) => setTimeout(r, 500))
+    if (!(await page.$('.sheet'))) return false
+    await page.evaluate(() => {
+      document.querySelector('.chips .chip')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    await new Promise((r) => setTimeout(r, 250))
+    return true
+  }
 
-        // Pick a suggested amount, then try to send with no wallet present.
-        // The app must degrade to a readable message, not a crash.
-        await page.evaluate(() => {
-          const chip = document.querySelector('.chips .chip')
-          chip?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-        })
-        await new Promise((r) => setTimeout(r, 300))
-        await shoot(page, 'contribute-filled')
+  const clickSend = async (page) => {
+    await page.evaluate(() => {
+      const send = [...document.querySelectorAll('.sheet button')].find((b) =>
+        /send/i.test(b.textContent ?? ''),
+      )
+      send?.click()
+    })
+  }
 
-        await page.evaluate(() => {
-          const send = [...document.querySelectorAll('.sheet button')].find((b) =>
-            /send/i.test(b.textContent ?? ''),
-          )
-          send?.click()
-        })
-        // Generous: covers the provider-init timeout if the fast path ever regresses.
-        await new Promise((r) => setTimeout(r, 6000))
-        const errText = await page.evaluate(
-          () => document.querySelector('.error-text')?.textContent ?? '',
+  {
+    const page = await open(`/k/${kitty.id}`, { insideNimiqPay: true, wallet: 'reject' })
+    if (!(await openSheetAndFill(page))) {
+      bad('contribute sheet opens', '.sheet not rendered after tapping Chip in')
+    } else {
+      ok('contribute sheet opens')
+
+      const label = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('.sheet button')].find((x) =>
+          /send/i.test(x.textContent ?? ''),
         )
-        if (/nimiq pay/i.test(errText)) ok(`no-wallet path explains itself ("${errText}")`)
-        else bad('no-wallet path explains itself', `got "${errText}"`)
-        await shoot(page, 'contribute-no-wallet')
+        return (b?.textContent ?? '').trim()
+      })
+      if (/send\s+[\d\s.]+NIM/i.test(label)) ok(`amount chip fills the CTA ("${label}")`)
+      else bad('amount chip fills the CTA', `CTA reads "${label}"`)
+
+      await assertNoHScroll(page, 'contribute sheet')
+      await shoot(page, 'contribute-filled')
+
+      // The provider returns {error:{...}} rather than throwing when the user
+      // declines. This asserts the unwrap() guard treats that as a cancellation
+      // — not as success, and not as a red error.
+      await clickSend(page)
+      await new Promise((r) => setTimeout(r, 1500))
+
+      const afterReject = await page.evaluate(() => ({
+        error: document.querySelector('.error-text')?.textContent ?? '',
+        sheetStillOpen: !!document.querySelector('.sheet'),
+        wentToSuccess: /you chipped in/i.test(document.body.innerText),
+      }))
+
+      if (!afterReject.wentToSuccess) ok('declining does not fake a successful contribution')
+      else bad('declining does not fake a successful contribution', 'success screen shown after a rejection')
+
+      if (afterReject.error === '') ok('declining shows no error (cancel is not a failure)')
+      else bad('declining shows no error', `got "${afterReject.error}"`)
+
+      if (afterReject.sheetStillOpen) ok('declining leaves the sheet open to retry')
+      else warn('sheet closed after a decline')
+    }
+    await page.close()
+  }
+  {
+    // Happy path, end to end, with the wallet approving.
+    const page = await open(`/k/${kitty.id}`, { insideNimiqPay: true, wallet: 'accept' })
+    if (!(await openSheetAndFill(page))) {
+      bad('approved contribution reaches the success screen', 'sheet did not open')
+    } else {
+      await clickSend(page)
+      await new Promise((r) => setTimeout(r, 2500))
+
+      const after = await page.evaluate(() => ({
+        success: /you chipped in/i.test(document.body.innerText),
+        share: [...document.querySelectorAll('button')].some((b) =>
+          /share so it fills faster/i.test(b.textContent ?? ''),
+        ),
+        createOwn: [...document.querySelectorAll('button')].some((b) =>
+          /start your own kitty/i.test(b.textContent ?? ''),
+        ),
+      }))
+
+      if (after.success) ok('approved contribution reaches the success screen')
+      else bad('approved contribution reaches the success screen')
+
+      if (after.share) ok('success screen leads with sharing (the growth loop)')
+      else bad('success screen leads with sharing')
+
+      if (after.createOwn) ok('success screen offers "start your own"')
+      else bad('success screen offers "start your own"')
+
+      await assertNoHScroll(page, 'success screen')
+      await shoot(page, 'success')
+    }
+    await page.close()
+  }
+
+  console.log('\nHost branch — plain browser vs Nimiq Pay')
+  {
+    // --- provider ABSENT: the web-fallback path a stripped deeplink lands on
+    const page = await open(`/k/${kitty.id}`)
+
+    const branch = await page.$('[data-testid="browser-branch"]')
+    if (branch) ok('browser: fallback branch is shown')
+    else bad('browser: fallback branch is shown', 'no [data-testid=browser-branch]')
+
+    if (await page.$('[data-testid="view-only-badge"]')) ok('browser: view-only badge present')
+    else bad('browser: view-only badge present')
+
+    // Both routes out must exist — neither may dead-end.
+    const labels = await page.evaluate(() =>
+      [...document.querySelectorAll('button, a')].map((b) => (b.textContent ?? '').trim()),
+    )
+    if (labels.some((l) => /open in nimiq pay/i.test(l))) ok('browser: "Open in Nimiq Pay" offered')
+    else bad('browser: "Open in Nimiq Pay" offered', labels.slice(0, 6).join(' | '))
+
+    if (labels.some((l) => /continue in browser/i.test(l)))
+      ok('browser: "Continue in browser" offered')
+    else bad('browser: "Continue in browser" offered', labels.slice(0, 6).join(' | '))
+
+    // The Kitty itself must still be readable — that is the whole point of the
+    // fallback: a stripped deeplink still shows something worth acting on.
+    const readable = await page.evaluate(() => {
+      const text = document.body.innerText
+      return {
+        title: /Weekend in Lisbon/.test(text),
+        progress: /%/.test(text),
+        contributors: /Maya/.test(text) && /Sam/.test(text),
+        bar: !!document.querySelector('[role="progressbar"]'),
       }
+    })
+    for (const [k, v] of Object.entries(readable)) {
+      if (v) ok(`browser: Kitty ${k} renders read-only`)
+      else bad(`browser: Kitty ${k} renders read-only`)
+    }
+
+    // The dock must not offer an action that can only fail without a wallet.
+    const dock = await page.evaluate(
+      () => document.querySelector('.dock')?.innerText ?? '',
+    )
+    if (/open in nimiq pay to chip in/i.test(dock)) ok('browser: dock CTA is the hand-off')
+    else bad('browser: dock CTA is the hand-off', `dock reads "${dock.replace(/\n/g, ' / ')}"`)
+
+    await assertNoHScroll(page, 'browser branch')
+    await assertTapTargets(page, 'browser branch')
+    await shoot(page, 'fallback-browser')
+    await page.close()
+  }
+  {
+    // --- provider PRESENT: full flow, no branch, no badge
+    const page = await open(`/k/${kitty.id}`, { insideNimiqPay: true })
+
+    if (!(await page.$('[data-testid="browser-branch"]'))) ok('nimiq pay: no fallback branch')
+    else bad('nimiq pay: no fallback branch', 'branch shown inside the host app')
+
+    if (!(await page.$('[data-testid="view-only-badge"]'))) ok('nimiq pay: no view-only badge')
+    else bad('nimiq pay: no view-only badge')
+
+    const dock = await page.evaluate(() => document.querySelector('.dock')?.innerText ?? '')
+    if (/chip in/i.test(dock) && !/open in nimiq pay/i.test(dock))
+      ok('nimiq pay: dock CTA is "Chip in"')
+    else bad('nimiq pay: dock CTA is "Chip in"', `dock reads "${dock.replace(/\n/g, ' / ')}"`)
+
+    await assertNoHScroll(page, 'nimiq pay view')
+    await shoot(page, 'fallback-nimiqpay')
+    await page.close()
+  }
+
+  console.log('\nDual-link sharing')
+  {
+    const page = await open(`/k/${kitty.id}`, { insideNimiqPay: true })
+    // Capture what the app hands the OS share sheet, without a real share sheet.
+    const shared = await page.evaluate(async () => {
+      let captured = null
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: async (data) => {
+          captured = data
+        },
+      })
+      const btn = [...document.querySelectorAll('button')].find((b) =>
+        /share kitty|kitty teilen|compartir/i.test(b.textContent ?? ''),
+      )
+      if (!btn) return { error: 'share button not found' }
+      btn.click()
+      await new Promise((r) => setTimeout(r, 400))
+      return captured ?? { error: 'navigator.share was not called' }
+    })
+
+    if (shared?.error) {
+      bad('share emits both links', shared.error)
+    } else {
+      const blob = `${shared.text ?? ''} ${shared.url ?? ''}`
+      if (/nimiqpay:\/\/miniapp\?url=/.test(blob)) ok('share includes the nimiqpay:// deeplink')
+      else bad('share includes the nimiqpay:// deeplink', blob.slice(0, 120))
+
+      if (blob.includes(`${BASE}/k/${kitty.id}`)) ok('share includes the https web fallback')
+      else bad('share includes the https web fallback', blob.slice(0, 120))
+
+      if ((shared.url ?? '').startsWith('http'))
+        ok('share url field is the https link (drives rich previews)')
+      else bad('share url field is the https link', `url="${shared.url}"`)
     }
     await page.close()
   }
@@ -245,6 +442,16 @@ async function main() {
     })
     if (clipped.length) bad(`${locale}: no clipped text`, clipped.slice(0, 3).join(' | '))
     else ok(`${locale}: no clipped text`)
+
+    // These pages render in browser mode, so the fallback branch is on screen —
+    // meaning the clipping check above covered its translated copy too. Assert
+    // it explicitly rather than relying on that being obvious.
+    if (await page.$('[data-testid="browser-branch"]')) {
+      ok(`${locale}: fallback branch renders translated`)
+    } else {
+      bad(`${locale}: fallback branch renders translated`, 'branch missing from this page')
+    }
+
     await shoot(page, name)
     await page.close()
   }

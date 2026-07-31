@@ -79,7 +79,22 @@ export const en = {
   'settle.done': 'The Kitty is paid out.',
   'settle.onlyOrganizer': 'Only the organizer can pay this out.',
 
+  'host.viewOnly': 'View only',
+  'host.branchTitle': "You're viewing in a browser",
+  'host.branchBody': 'You can see everything here. Chipping in needs Nimiq Pay, where your wallet lives.',
+  'host.openInPay': 'Open in Nimiq Pay',
+  'host.continueBrowser': 'Continue in browser (view-only)',
+  'host.chipInNeedsPay': 'Open in Nimiq Pay to chip in',
+  'host.noAppTitle': "Nothing happened?",
+  'host.noAppBody':
+    "Either Nimiq Pay isn't installed, or this in-app browser blocked the hand-off. Try opening this page in Safari or Chrome first.",
+  'host.getApp': 'Get Nimiq Pay',
+  'host.homeBranchTitle': 'Kitty works best in Nimiq Pay',
+  'host.homeBranchBody': 'You can browse here, but creating a Kitty and chipping in need your wallet.',
+
   'share.text': 'I started a Kitty for {title} — chip in?',
+  'share.payLabel': 'Open in Nimiq Pay:',
+  'share.webLabel': 'No Nimiq Pay? This link works in any browser:',
   'share.copied': 'Link copied',
   'share.deeplinkCopied': 'Nimiq Pay link copied',
   'share.copyLink': 'Copy link',

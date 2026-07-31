@@ -3,14 +3,15 @@ import type { Nav, ToastFn } from '../App'
 import type { Kitty, LeaderboardEntry } from '../../shared/types'
 import { api } from '../lib/api'
 import { peekDeviceId } from '../lib/device'
-import { isInsideNimiqPay } from '../lib/host'
 import { useI18n } from '../i18n'
+import { BrowserBranch, useHostMode } from '../components/HostBranch'
 import { formatAmount, fromWire, progressPct } from '../../shared/money'
 import { railDecimals, railSymbol } from '../rails'
 import { Avatar, Button, EmptyState, Skeleton } from '../components/ui'
 
 export function HomeScreen({ nav, onToast }: { nav: Nav; onToast: ToastFn }) {
   const { t } = useI18n()
+  const hostMode = useHostMode()
   const [mine, setMine] = useState<Kitty[] | null>(null)
   const [leaders, setLeaders] = useState<LeaderboardEntry[] | null>(null)
 
@@ -56,9 +57,7 @@ export function HomeScreen({ nav, onToast }: { nav: Nav; onToast: ToastFn }) {
         </Button>
       </section>
 
-      {!isInsideNimiqPay() && (
-        <p className="tiny faint center">{t('home.openInPay')}</p>
-      )}
+      {hostMode === 'browser' && <BrowserBranch kittyId={null} variant="home" />}
 
       <section className="stack-sm">
         <h2>{t('home.mine')}</h2>

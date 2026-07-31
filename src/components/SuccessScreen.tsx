@@ -59,6 +59,8 @@ export function SuccessScreen({
               kittyId: kitty.id,
               title: kitty.title,
               text: t('share.text', { title: kitty.title }),
+              payLabel: t('share.payLabel'),
+              webLabel: t('share.webLabel'),
             }).then((r) => onShared(r.method))
           }}
         >

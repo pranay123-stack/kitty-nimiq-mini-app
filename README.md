@@ -245,6 +245,15 @@ Stated plainly rather than buried:
 - **The device identifier is per device, not per person.** Nimiq's docs are explicit that a shared
   device returns the same value to everyone, so it gates "did this device create this Kitty" and
   nothing security-critical.
+- **A custom scheme fails silently.** There is no callback telling us `nimiqpay://` didn't resolve,
+  so "Open in Nimiq Pay" infers failure from the page still being visible ~1.2s later. Inside an
+  in-app browser that blocks custom schemes, someone who *does* have Nimiq Pay still sees the
+  "Nothing happened?" hint. The copy names both causes rather than guessing. See
+  [docs/DEEPLINK-TEST.md](docs/DEEPLINK-TEST.md).
+- **Chat-app deeplink behaviour is untested.** Whether any given client linkifies, strips or opens
+  `nimiqpay://` cannot be checked without a phone. Every share therefore emits the https link too,
+  and that link renders a full read-only Kitty in any browser, so a stripped deeplink still lands
+  somewhere worth acting on.
 - **NIM receipts may not be canonical hashes.** The provider returns a serialized transaction rather
   than a hash, so Kitty derives a local key and reconciles the real hash from the memo. See
   `toReceipt()` in [src/rails/nim.ts](src/rails/nim.ts).

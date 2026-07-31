@@ -499,6 +499,32 @@ textarea.input {
   }
 }
 
+/* ------------------------------------------------------- browser branch */
+
+.branch {
+  border: 1.5px solid rgba(12, 166, 254, 0.35);
+  background: linear-gradient(
+    160deg,
+    rgba(12, 166, 254, 0.09),
+    rgba(12, 166, 254, 0.02)
+  );
+}
+.branch__noapp {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  animation: screen-in 0.28s var(--ease);
+}
+.badge--viewonly {
+  background: rgba(12, 166, 254, 0.16);
+  color: var(--nq-light-blue);
+}
+@media (prefers-color-scheme: dark) {
+  .badge--viewonly {
+    color: var(--nq-sky);
+  }
+}
+
 /* ----------------------------------------------------------- skeleton */
 
 .skeleton {
