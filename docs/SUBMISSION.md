@@ -97,7 +97,7 @@ Cloudflare Workers + D1 · MIT licensed.
 |---|---|
 | Live app | `https://<your-worker>.workers.dev` |
 | Open in Nimiq Pay | `nimiqpay://miniapp?url=https://<your-worker>.workers.dev` |
-| Source | `https://github.com/<you>/kitty` |
+| Source | `https://github.com/pranay123-stack/kitty-nimiq-mini-app` |
 | Demo video | *(see [GROWTH-KIT.md](GROWTH-KIT.md) for the script)* |
 
 ---

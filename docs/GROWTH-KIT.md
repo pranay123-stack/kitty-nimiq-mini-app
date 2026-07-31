@@ -104,7 +104,7 @@ cannot convey.
 > Nimiq's RPC wraps results as `{"result": {"data": ...}}`, so reading `result` directly silently
 > breaks every verification.
 >
-> Live: <link> · Code (MIT): <repo>
+> Live: <link> · Code (MIT): https://github.com/pranay123-stack/kitty-nimiq-mini-app
 >
 > **Start a real Kitty with it and tell me where it feels wrong.** I'd rather fix it this week than
 > defend it later.
@@ -142,7 +142,7 @@ cannot convey.
 > 5/ Built on the Nimiq Pay Mini Apps Framework. Open source, MIT.
 >
 > Try it: <link>
-> Code: <repo>
+> Code: https://github.com/pranay123-stack/kitty-nimiq-mini-app
 >
 > Start a Kitty for something you're actually splitting this week and tell me what breaks. 👇
 
