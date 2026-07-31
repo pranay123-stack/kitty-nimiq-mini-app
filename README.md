@@ -7,10 +7,16 @@ target in **NIM** or **USDT**, and shares one link. Friends open it inside Nimiq
 and watch the pot fill up live. When it's full, the organizer pays it out.
 
 <p align="center">
-  <img src="docs/screenshots/home.png" width="260" alt="Home screen" />
-  <img src="docs/screenshots/kitty.png" width="260" alt="A Kitty filling up" />
-  <img src="docs/screenshots/create.png" width="260" alt="Creating a Kitty" />
+  <img src="docs/screenshots/home.png" width="235" alt="Home screen" />
+  <img src="docs/screenshots/kitty.png" width="235" alt="A Kitty filling up" />
+  <img src="docs/screenshots/contribute-filled.png" width="235" alt="Chipping in" />
 </p>
+<p align="center">
+  <img src="docs/screenshots/kitty-light.png" width="235" alt="Light mode" />
+  <img src="docs/screenshots/create.png" width="235" alt="Creating a Kitty" />
+  <img src="docs/screenshots/kitty-de.png" width="235" alt="German" />
+</p>
+<p align="center"><em>Dark and light, English / German / Spanish, following your Nimiq Pay language.</em></p>
 
 ---
 
@@ -198,13 +204,21 @@ Your Mini App URL is the Worker URL. The share deeplink is
 
 ```bash
 npm run typecheck   # tsc across app, worker and shared
-npm run test:live   # runs the on-chain verification logic against Nimiq mainnet
+npm run test:live   # on-chain verification logic, against Nimiq mainnet
+npm run test:ui     # drives the real app in a real browser (needs it running)
 ```
 
-`test:live` is a live test on purpose. The entire risk in `verify.ts` is whether our assumptions
+**`test:live` is a live test on purpose.** The entire risk in `verify.ts` is whether our assumptions
 about the RPC's response shape are correct, and a mock would just encode the same assumption twice.
 It caught two real bugs during development, including one where a not-yet-mined transaction could be
 confirmed against a *different* payment from the same person.
+
+**`test:ui`** drives the app under true mobile emulation (390×844, touch) and asserts the things a
+phone-sized WebView punishes: no screen scrolls horizontally, every tappable control clears 40px, the
+contribute sheet opens, the no-wallet path explains itself rather than hanging, `de`/`es` don't clip
+text, and unknown Kitties show a real empty state. It writes the screenshots in
+[docs/screenshots](docs/screenshots). It caught a case where a user with no wallet watched
+"Connecting…" for eight seconds before being told to open Nimiq Pay.
 
 ---
 

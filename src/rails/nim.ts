@@ -16,11 +16,30 @@ export { isValidNimAddress, formatNimAddress } from '../../shared/addresses'
 
 let providerPromise: Promise<NimiqProvider> | null = null
 
+/**
+ * True when the page is demonstrably not running inside Nimiq Pay.
+ *
+ * Nimiq Pay injects both the provider and the host context *before* page
+ * scripts run, so by the time a user has loaded the app and tapped a button,
+ * the absence of both is conclusive. Checking this lets us fail in a few
+ * milliseconds instead of making someone watch "Connecting…" for the whole
+ * init() timeout before being told to open the app somewhere else.
+ */
+function definitelyOutsideNimiqPay(): boolean {
+  return typeof window !== 'undefined' && !window.nimiq && !window.nimiqPay
+}
+
 function getProvider(): Promise<NimiqProvider> {
+  if (definitelyOutsideNimiqPay()) {
+    return Promise.reject(
+      new RailError('Nimiq wallet not available. Open this inside Nimiq Pay.', 'unavailable'),
+    )
+  }
+
   // init() resolves once Nimiq Pay injects window.nimiq. Cache it: calling it
   // per-action would re-arm the timeout on every tap.
   if (!providerPromise) {
-    providerPromise = init({ timeout: 8000 }).catch((err) => {
+    providerPromise = init({ timeout: 4000 }).catch((err) => {
       providerPromise = null
       throw new RailError(
         'Nimiq wallet not available. Open this inside Nimiq Pay.',
