@@ -14,6 +14,20 @@ not_found_handling = "single-page-application"
 # tags; everything else is served straight from static assets.
 run_worker_first = ["/api/*", "/k/*", "/og/*"]
 
+# The Open Graph renderer imports resvg's WebAssembly and two subsetted Mulish
+# faces directly, so they ship inside the Worker bundle. A Worker has no system
+# fonts and fetching one per request would add a round trip — and a failure
+# mode — to every social-crawler hit.
+[[rules]]
+type = "CompiledWasm"
+globs = ["**/*.wasm"]
+fallthrough = true
+
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf"]
+fallthrough = true
+
 [[d1_databases]]
 binding = "DB"
 database_name = "kitty-db"

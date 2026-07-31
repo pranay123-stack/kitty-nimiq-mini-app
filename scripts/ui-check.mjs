@@ -64,7 +64,12 @@ async function shoot(page, name) {
 }
 
 async function seed() {
-  const deviceId = 'ab'.repeat(32)
+  // Randomised per run: Kitty rate-limits creation to 10 per device per hour,
+  // so a fixed id makes the eleventh run of this suite die on an unrelated
+  // error instead of testing anything.
+  const deviceId = [...crypto.getRandomValues(new Uint8Array(32))]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
   const headers = { 'content-type': 'application/json', 'X-Device-Id': deviceId }
   const res = await fetch(`${BASE}/api/kitties`, {
     method: 'POST',
@@ -79,7 +84,15 @@ async function seed() {
       organizerName: 'Pranay',
     }),
   })
-  const { kitty } = await res.json()
+  const created = await res.json()
+  if (!created?.kitty?.id) {
+    // Say what actually happened rather than throwing on undefined later.
+    throw new Error(
+      `Could not seed a Kitty (HTTP ${res.status}): ${JSON.stringify(created)}. ` +
+        `Is the app running at ${BASE}?`,
+    )
+  }
+  const { kitty } = created
 
   const A = '0123456789ABCDEFGHJKLMNPQRSTUVXY'
   const mod97 = (s) => {

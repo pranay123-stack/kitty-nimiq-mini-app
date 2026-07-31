@@ -14,6 +14,7 @@ import { isValidAddressFor, normaliseNimAddress } from '../shared/addresses'
 import { CHAINS } from '../shared/chains'
 import { verifyEvmContribution, verifyNimContribution } from './verify'
 import { injectMeta, shareCardSvg, type ShareData } from './share'
+import { renderOgPng } from './og-image'
 
 export interface Env {
   DB: D1Database
@@ -511,20 +512,101 @@ async function loadShareData(env: Env, id: string): Promise<ShareData | null> {
   }
 }
 
-app.get('/og/:file', async (c) => {
-  const id = c.req.param('file').replace(/\.svg$/, '')
-  const data = await loadShareData(c.env, id)
-  if (!data) return c.notFound()
+/** The pre-rendered brand card, used whenever generation cannot be trusted. */
+async function staticCard(env: Env, req: Request): Promise<Uint8Array | null> {
+  try {
+    const res = await env.ASSETS.fetch(new URL('/og-default.png', req.url))
+    if (!res.ok) return null
+    return new Uint8Array(await res.arrayBuffer())
+  } catch {
+    return null
+  }
+}
 
-  return new Response(shareCardSvg(data), {
+/**
+ * Per-Kitty Open Graph image.
+ *
+ * Always PNG, always 200. Social clients refuse SVG and cache whatever they
+ * first receive — including an error — so a failed render must still hand back
+ * a valid image rather than a status code.
+ *
+ * `?fallback=1` forces the static path, which is how the test suite exercises
+ * the failure branch without having to break the renderer.
+ */
+app.get('/og/:file', async (c) => {
+  const file = c.req.param('file')
+  const id = file.replace(/\.(png|svg)$/, '')
+
+  // The SVG endpoint stays for in-app use and the growth kit, where SVG is fine.
+  if (file.endsWith('.svg')) {
+    const data = await loadShareData(c.env, id)
+    if (!data) return c.notFound()
+    return new Response(shareCardSvg(data), {
+      headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public, max-age=60' },
+    })
+  }
+
+  const cache = caches.default
+  const cacheKey = new Request(new URL(c.req.url).toString(), { method: 'GET' })
+  const forceFallback = new URL(c.req.url).searchParams.get('fallback') === '1'
+
+  if (!forceFallback) {
+    const hit = await cache.match(cacheKey)
+    if (hit) return hit
+  }
+
+  const data = await loadShareData(c.env, id)
+  if (!data) {
+    // Unknown id: still a valid image, so a mistyped link degrades to the brand
+    // card instead of a broken-image icon in someone's chat.
+    const fallback = await staticCard(c.env, c.req.raw)
+    if (!fallback) return c.notFound()
+    return pngResponse(fallback, { generated: false, cacheSeconds: 300 })
+  }
+
+  let png: Uint8Array
+  let generated: boolean
+
+  if (forceFallback) {
+    const fallback = await staticCard(c.env, c.req.raw)
+    if (!fallback) return c.notFound()
+    png = fallback
+    generated = false
+  } else {
+    try {
+      const result = await renderOgPng(data, () => staticCard(c.env, c.req.raw))
+      png = result.png
+      generated = result.generated
+    } catch {
+      const fallback = await staticCard(c.env, c.req.raw)
+      if (!fallback) return c.notFound()
+      png = fallback
+      generated = false
+    }
+  }
+
+  // Rendering costs real CPU, so cache it. Ten minutes keeps a filling pot's
+  // preview honest without re-rendering for every crawler that comes past.
+  const response = pngResponse(png, { generated, cacheSeconds: generated ? 600 : 60 })
+  if (generated && !forceFallback) {
+    c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))
+  }
+  return response
+})
+
+function pngResponse(
+  png: Uint8Array,
+  { generated, cacheSeconds }: { generated: boolean; cacheSeconds: number },
+): Response {
+  return new Response(png as unknown as BodyInit, {
     headers: {
-      'content-type': 'image/svg+xml; charset=utf-8',
-      // Short cache: the card shows live progress, and a stale percentage in a
-      // chat preview undersells a pot that has since filled up.
-      'cache-control': 'public, max-age=60',
+      'content-type': 'image/png',
+      'cache-control': `public, max-age=${cacheSeconds}`,
+      // Makes it obvious in curl -I whether the dynamic path actually ran.
+      'x-kitty-og': generated ? 'generated' : 'static',
     },
   })
-})
+}
 
 /**
  * Serve the SPA shell for a Kitty with per-Kitty Open Graph tags baked in, so

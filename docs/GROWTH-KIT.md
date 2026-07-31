@@ -30,13 +30,22 @@ contributors each is fifty wallets — from ten conversations you had in advance
 
 ### In-app
 
-- **Live share card** — `GET /og/<kittyId>.svg` renders a 1200×630 card with the pot's real title,
-  progress bar, percentage and contributor count. Use it in posts and screenshots; it updates itself.
-- **Static brand card** — [`public/og-default.png`](../public/og-default.png), used as `og:image`
-  because WhatsApp/Telegram/X/LinkedIn all refuse SVG there.
-- **Rich link previews** — every `/k/<id>` link unfurls as
+- **Live share card, as a real PNG** — `GET /og/<kittyId>.png` renders a 1200×630 card carrying the
+  pot's actual title, progress bar, percentage, currency and contributor count. This is what
+  `og:image` points at, so it is what people *see* in the chat. Drop the URL straight into a post or
+  a slide; it re-renders itself as the pot fills.
+- **SVG version** — `GET /og/<kittyId>.svg`, same design, for in-app use and anywhere vector is
+  preferable. Do **not** use it for `og:image`: every major social client refuses SVG there.
+- **Static brand card** — [`public/og-default.png`](../public/og-default.png). Served automatically
+  if generation ever fails, so a preview is never missing.
+- **Rich link previews** — every `/k/<id>` link unfurls with the card above plus
   *"✈️ Weekend in Lisbon — Kitty · 62% there — 620 NIM of 1 000 NIM. 4 people have chipped in."*
-  That live number is the reason people tap. It is the whole growth loop in one line.
+  The live number is the reason people tap. That is the whole growth loop in one line.
+
+> Preview images and text are cached hard by every platform — often for days, keyed on the URL. If
+> you re-share the same Kitty after it fills up, the old percentage can persist. Force a refresh with
+> the platform's own debugger (see [DEEPLINK-TEST.md](DEEPLINK-TEST.md), Matrix E) or share a link
+> with a throwaway query string.
 
 ### Links to hand out
 

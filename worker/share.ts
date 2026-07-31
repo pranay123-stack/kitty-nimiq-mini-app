@@ -68,21 +68,26 @@ export function injectMeta(html: string, data: ShareData, url: string): string {
   const title = `${data.emoji} ${truncate(data.title, 60)} — Kitty`
   const description = truncate(shareDescription(data), 160)
 
-  // Deliberately a static PNG, not the live SVG card. WhatsApp, Telegram, X and
-  // LinkedIn all refuse SVG for og:image, so pointing at /og/<id>.svg would mean
-  // no preview image at all in exactly the places Kitty links get shared. The
-  // live numbers still reach the reader through og:description, which every one
-  // of those clients does render. The SVG card is used in-app instead.
-  const image = `${new URL(url).origin}/og-default.png`
+  // A per-Kitty PNG. It has to be PNG: WhatsApp, Telegram, X and LinkedIn all
+  // refuse SVG for og:image, so the SVG card this used to point at produced no
+  // preview image at all in exactly the places Kitty links get shared. The
+  // endpoint always answers with a valid PNG — falling back to the static brand
+  // card rather than erroring — because crawlers cache whatever they first get.
+  const image = `${new URL(url).origin}/og/${data.id}.png`
 
   const tags = [
     `<title>${escapeXml(title)}</title>`,
     `<meta name="description" content="${escapeXml(description)}" />`,
     `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="Kitty" />`,
     `<meta property="og:title" content="${escapeXml(title)}" />`,
     `<meta property="og:description" content="${escapeXml(description)}" />`,
     `<meta property="og:url" content="${escapeXml(url)}" />`,
     `<meta property="og:image" content="${escapeXml(image)}" />`,
+    `<meta property="og:image:type" content="image/png" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
+    `<meta property="og:image:alt" content="${escapeXml(`${truncate(data.title, 60)} — ${shareDescription(data)}`)}" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${escapeXml(title)}" />`,
     `<meta name="twitter:description" content="${escapeXml(description)}" />`,

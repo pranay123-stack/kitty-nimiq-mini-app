@@ -198,7 +198,7 @@ inside Nimiq Pay — so it cannot be checked with `curl`. What you *can* verify:
 | Deploy fails: `Couldn't find a D1 DB with the id` | Step 3 not done, or id typo'd | Re-check `grep database_id wrangler.toml` |
 | App loads, every action fails with 500 | Remote schema missing | `npm run db:remote` |
 | `/api/*` returns the HTML page | `run_worker_first` missing from `[assets]` | Don't edit that block in `wrangler.toml` |
-| Link previews show no image | Normal — `og:image` is the static PNG | See the OG notes in the README |
+| Link previews show no image | Crawler rejected or cached a miss | `curl -sI <url>/og/<id>.png` — must be `image/png`; then force a refresh with the platform debugger (docs/DEEPLINK-TEST.md, Matrix E) |
 | Organizer lost the **Pay out** button | Origin changed, so the device id changed | Unrecoverable; see the hostname warning above |
 | `wrangler d1 execute` asks to create a DB | `database_name` mismatch | Must stay `kitty-db` |
 

@@ -112,6 +112,31 @@ From inside Nimiq Pay, open a Kitty and tap **Share Kitty**.
 | D4 | Sharing to WhatsApp preserves the deeplink text | May be stripped — record it | ☐ |
 | D5 | Clipboard fallback (share sheet unavailable) | Both links copied | ☐ |
 
+## Matrix E — link previews (also UNVERIFIED, and for the same reason)
+
+The `og:image` is now a real per-Kitty PNG at 1200×630, generated live. That the endpoint returns a
+valid PNG **is** machine-tested. Whether each platform's crawler fetches it, accepts it, and shows
+it is not — every one of them caches aggressively, on its own schedule, keyed on the URL.
+
+Use each platform's own debugger; they also force a cache refresh.
+
+| # | Platform | Tool | Expected | Result |
+|---|---|---|---|---|
+| E1 | Facebook / WhatsApp | [Sharing Debugger](https://developers.facebook.com/tools/debug/) | Card image + title + live % · "Scrape Again" refreshes | ☐ |
+| E2 | X / Twitter | [Card Validator](https://cards-dev.twitter.com/validator) | `summary_large_image` with the card | ☐ |
+| E3 | LinkedIn | [Post Inspector](https://www.linkedin.com/post-inspector/) | Card image + description | ☐ |
+| E4 | Telegram | `@WebpageBot` — send it the link | Card image; the bot forces a re-fetch | ☐ |
+| E5 | Any | `curl -sI <BASE>/og/<ID>.png` | `content-type: image/png`, `x-kitty-og: generated` | ☐ |
+| E6 | Any | Fill the pot further, then re-check E5 | Percentage on the card has moved | ☐ |
+
+> **`x-kitty-og` tells you which path ran.** `generated` means the live per-Kitty card;
+> `static` means generation failed and the brand card was served instead. If you ever see `static`
+> in production, previews still work — but check the Worker logs, because the pot's real numbers
+> aren't reaching the image.
+>
+> WhatsApp in particular caches previews for a long time and does **not** offer a per-user refresh —
+> the Facebook debugger is the only lever. Test with a Kitty you don't mind burning.
+
 ---
 
 ## If a row fails
@@ -119,6 +144,8 @@ From inside Nimiq Pay, open a Kitty and tap **Share Kitty**.
 | Failure | Meaning | Action |
 |---|---|---|
 | A-row preview card missing | OG tags not reaching the crawler | `curl -s <url>/k/<id> \| grep og:` — if empty, `run_worker_first` is misconfigured |
+| E-row image missing | Crawler rejected or never fetched the PNG | `curl -sI <url>/og/<id>.png` must be `image/png`; then force a refresh via the platform debugger |
+| E-row shows the generic card | Generation fell back | Check `x-kitty-og`; if `static`, read the Worker logs for the render error |
 | A-row page blank | SPA or API broken | Re-run `verify-deploy.sh` |
 | B-row not tappable | Chat app didn't linkify a custom scheme | **Expected.** Record it; the web link covers it |
 | C-row false "Nothing happened?" | In-app browser blocked the scheme | Expected; copy already explains it |

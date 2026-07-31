@@ -49,8 +49,11 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "error: '$1' is required but 
 need curl
 need python3
 
-# A 64-char hex device id. Real ones come from Nimiq Pay; the API only checks shape.
-DEVICE_ID="$(printf 'ab%.0s' $(seq 1 32))"
+# A 64-char hex device id. Real ones come from Nimiq Pay; the API only checks
+# shape. Randomised per run on purpose: Kitty rate-limits creation to 10 per
+# device per hour, so a fixed id makes the eleventh run of this script fail with
+# a completely unrelated diagnosis.
+DEVICE_ID="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 # Checksum-valid Nimiq address (mod-97 verified) used as the throwaway payout target.
 NQ="NQ27 1EE2 A5R4 LR8J QXVQ 0F4H STFD BV9M 8T7P"
 
@@ -119,6 +122,13 @@ except Exception: print("")' 2>/dev/null)"
 
 if [ -n "$KID" ]; then
   ok "created a Kitty on live D1 (id: $KID)"
+elif printf '%s' "$CREATE" | grep -q '"code":"rate_limited"'; then
+  # Distinguish "your app is fine, you just ran this a lot" from a broken
+  # database. Reporting a schema error here would send you chasing a ghost.
+  warn "creation rate-limited, so the write path could not be checked" \
+       "This is the app's own anti-spam rule, not a fault. Re-run in an hour, or use a fresh device id."
+elif printf '%s' "$CREATE" | grep -q '"code":'; then
+  bad "could not create a Kitty" "API rejected it: $(printf '%s' "$CREATE" | head -c 160)"
 else
   bad "could not create a Kitty" "The remote schema was never applied. Run: npm run db:remote"
   printf "        ${DIM}response: %s${OFF}\n" "$(printf '%s' "$CREATE" | head -c 200)"
@@ -185,16 +195,90 @@ if [ -n "$KID" ]; then
     warn "og:description has no percentage" "Link previews lose their hook"
   fi
 
-  OGIMG_CT="$(curl -sS --max-time 20 -o /dev/null -w '%{content_type}' "$BASE/og/$KID.png" 2>/dev/null)"
-  OGIMG_CODE="$(code "$BASE/og/$KID.png")"
-  if [ "$OGIMG_CODE" = "200" ]; then
-    case "$OGIMG_CT" in
-      image/png*) ok "per-Kitty OG image is image/png" ;;
-      *) bad "OG image content-type is '$OGIMG_CT'" "Social clients only render PNG/JPEG" ;;
-    esac
+  # The OG image is load-bearing for share-to-contribute, so these are hard
+  # failures rather than warnings.
+  OG_TMP="$(mktemp)"
+  OG_HDR="$(mktemp)"
+  curl -sS --max-time 30 -D "$OG_HDR" -o "$OG_TMP" "$BASE/og/$KID.png" 2>/dev/null
+  OGIMG_CODE="$(awk 'NR==1{print $2}' "$OG_HDR")"
+  OGIMG_CT="$(grep -i '^content-type:' "$OG_HDR" | tr -d '\r' | cut -d' ' -f2-)"
+  OG_MODE="$(grep -i '^x-kitty-og:' "$OG_HDR" | tr -d '\r' | cut -d' ' -f2-)"
+
+  if [ "$OGIMG_CODE" = "200" ]; then ok "/og/<id>.png → 200"
+  else bad "/og/<id>.png returned $OGIMG_CODE" "Link previews will have no image"; fi
+
+  case "$OGIMG_CT" in
+    image/png*) ok "OG image content-type is image/png" ;;
+    *) bad "OG image content-type is '$OGIMG_CT'" "WhatsApp/Telegram/X/LinkedIn only render PNG or JPEG" ;;
+  esac
+
+  OG_DIMS="$(python3 - "$OG_TMP" <<'PY'
+import struct, sys
+try:
+    d = open(sys.argv[1], 'rb').read()
+    if d[:8] != b'\x89PNG\r\n\x1a\n':
+        print('NOTPNG'); raise SystemExit
+    w, h = struct.unpack('>II', d[16:24])
+    print(f'{w}x{h}')
+except Exception:
+    print('ERR')
+PY
+)"
+  if [ "$OG_DIMS" = "1200x630" ]; then ok "OG image is a valid PNG at 1200x630"
+  else bad "OG image dimensions are '$OG_DIMS', expected 1200x630" "Crawlers reject odd sizes"; fi
+
+  if [ "$OG_MODE" = "generated" ]; then
+    ok "OG image was generated live (per-Kitty card)"
+  elif [ "$OG_MODE" = "static" ]; then
+    warn "OG image fell back to the static card" \
+         "Previews still work but show the generic card. Check Worker logs for the render error."
   else
-    warn "/og/<id>.png returned $OGIMG_CODE" "Falling back to the static card"
+    warn "no x-kitty-og header (got '$OG_MODE')"
   fi
+
+  # The fallback path must itself always produce a valid PNG — that is the
+  # promise the whole design rests on.
+  FB_TMP="$(mktemp)"
+  FB_CT="$(curl -sS --max-time 20 -o "$FB_TMP" -w '%{content_type}' "$BASE/og/$KID.png?fallback=1" 2>/dev/null)"
+  FB_DIMS="$(python3 - "$FB_TMP" <<'PY'
+import struct, sys
+try:
+    d = open(sys.argv[1], 'rb').read()
+    if d[:8] != b'\x89PNG\r\n\x1a\n':
+        print('NOTPNG'); raise SystemExit
+    w, h = struct.unpack('>II', d[16:24]); print(f'{w}x{h}')
+except Exception:
+    print('ERR')
+PY
+)"
+  case "$FB_CT" in
+    image/png*) [ "$FB_DIMS" = "1200x630" ] \
+        && ok "forced-fallback path also returns a valid 1200x630 PNG" \
+        || bad "fallback PNG dimensions are '$FB_DIMS'" "The safety net is broken" ;;
+    *) bad "fallback returned '$FB_CT', not a PNG" "A failed render would produce no preview" ;;
+  esac
+
+  # An unknown id must still yield an image, not a 404 page in a chat preview.
+  UNK_CT="$(curl -sS --max-time 20 -o /dev/null -w '%{content_type}' "$BASE/og/zzzzzzzz.png" 2>/dev/null)"
+  case "$UNK_CT" in
+    image/png*) ok "unknown Kitty id still returns a PNG" ;;
+    *) warn "unknown id returned '$UNK_CT'" ;;
+  esac
+
+  # Meta tags must advertise the PNG and its size.
+  for tag in 'og:image:width" content="1200' 'og:image:height" content="630' \
+             'og:image:type" content="image/png' 'twitter:card" content="summary_large_image'; do
+    if printf '%s' "$KPAGE" | grep -qF "$tag"; then ok "meta ${tag%%\"*} present"
+    else bad "meta tag missing: ${tag%%\"*}"; fi
+  done
+
+  if printf '%s' "$KPAGE" | grep -qE 'og:image" content="[^"]+\.png"'; then
+    ok "og:image points at a .png"
+  else
+    bad "og:image does not point at a .png" "SVG is refused by every major social client"
+  fi
+
+  rm -f "$OG_TMP" "$OG_HDR" "$FB_TMP"
 fi
 
 # --------------------------------------------- 5. placeholders left in build

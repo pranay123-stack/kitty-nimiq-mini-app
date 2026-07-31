@@ -89,7 +89,9 @@ src/            React + TypeScript SPA (Vite)
   i18n/         en · de · es
 worker/         Hono API on Cloudflare Workers
   verify.ts     on-chain verification (NIM + EVM)
-  share.ts      Open Graph injection + SVG share card
+  share.ts      Open Graph injection + in-app SVG card
+  og-image.ts   per-Kitty PNG card, rendered with resvg-wasm
+  assets/       two subsetted Mulish faces (SIL OFL 1.1)
 shared/         money maths, address validation, chain registry
 ```
 
@@ -239,9 +241,14 @@ Stated plainly rather than buried:
 - **The organizer is trusted.** They hold the pot and choose where it goes. This is inherent to the
   non-custodial, no-contract design and is disclosed in-app. A future EVM-only escrow mode could
   remove it, at the cost of rail parity.
-- **`og:image` is a static card, not per-Kitty.** WhatsApp, Telegram, X and LinkedIn all refuse SVG
-  for `og:image`, and a Worker has no rasterizer. Live numbers still reach the reader through
-  `og:description`, which those clients do render. Per-Kitty PNGs would need satori + resvg-wasm.
+- **The OG card is Latin-only and has no emoji.** It is generated per-Kitty as a real PNG, but the
+  embedded font is a Latin-1 + Latin Extended-A subset, so a Kitty titled in, say, Japanese renders
+  as a generic label rather than tofu boxes. Emoji are omitted from the image deliberately — an
+  emoji font would cost more than the rest of the bundle — though the Kitty's emoji still appears in
+  `og:title`, which social clients render themselves.
+- **Whether previews actually appear in each app is unverified.** Every major platform caches
+  aggressively and each has its own crawler; confirming it needs a deployed URL and each platform's
+  own debugger. See [docs/DEEPLINK-TEST.md](docs/DEEPLINK-TEST.md), Matrix E.
 - **The device identifier is per device, not per person.** Nimiq's docs are explicit that a shared
   device returns the same value to everyone, so it gates "did this device create this Kitty" and
   nothing security-critical.
